@@ -1,1 +1,232 @@
+---
+title: "Set Up NaviGator for Local Development"
+sidebarTitle: "App Setup"
+description: "Clone the itinerary-builder repo, install dependencies, configure environment variables, and run the NaviGator PWA locally with Vite, Docker, or PM2."
+---
 
+This page covers how to get the NaviGator PWA (`itinerary-builder`) running on your local machine. You will need the Navigator Services API running as well; see [Services Setup](/navigator/services-setup) for that.
+
+## Prerequisites
+
+- **Node.js 22+** (the Dockerfile uses `node:22`; CI also runs on Node 22)
+- **npm** (comes with Node)
+- A **Mapbox access token** (obtain from Mapbox dashboard or a teammate)
+- (Optional) **Docker and Docker Compose** for containerized local runs
+- (Optional) **Playwright** for end-to-end testing
+
+## Clone and Install
+
+```bash
+git clone https://github.com/ISCOPipe/itinerary-builder.git
+cd itinerary-builder
+npm ci
+```
+
+## Environment Variables
+
+Copy the example file and fill in the required values:
+
+```bash
+cp .env.example .env
+```
+
+### Required Variables
+
+| Variable | Purpose | Example |
+| --- | --- | --- |
+| `VITE_MAPBOX_TOKEN` | Mapbox GL JS access token (geocoding, directions, isochrone, tiles) | `pk.ey...` |
+
+### Optional / Local-Dev Variables
+
+| Variable | Purpose | Example |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | Overrides the API base URL. If omitted, localhost HTTP pages default to `http://localhost:4443` | `http://localhost:4443` |
+| `VITE_APM_ACTIVE` | Set to `true` to enable Elastic APM RUM in dev | `true` |
+| `VITE_APM_SERVER_URL` | APM server endpoint (required when `VITE_APM_ACTIVE=true`) | `https://abc123.apm.us-east-1.aws.cloud.es.io` |
+| `VITE_APM_SERVICE_NAME` | Service name in APM dashboards | `itinerary-builder` |
+| `VITE_APM_SERVICE_VERSION` | Build version for deployment tracking | `1.0.0` |
+| `VITE_APM_ENVIRONMENT` | APM environment label | `development` |
+
+<Warning>
+  Never commit real values for `VITE_CF_CLIENT_ID`, `VITE_CF_SECRET_ID`, `VITE_APM_SECRET_TOKEN`, or `VITE_APM_API_KEY` to the repo. These are production secrets and must come from the team's secret store or a teammate. `VITE_*` variables are inlined verbatim into the public JS bundle by Vite, so any secret placed here is exposed to the browser.
+</Warning>
+
+### Production Build Variables (`.env.production.example`)
+
+The repo includes `.env.production.example` as a template for production builds. It documents:
+
+- `VITE_API_BASE_URL` (must be set for production to ensure correct API routing)
+- `VITE_CF_CLIENT_ID` / `VITE_CF_SECRET_ID` (Cloudflare Access service token for backend auth)
+- `VITE_APM_SERVER_URL`, `VITE_APM_SERVICE_NAME`, `VITE_APM_SERVICE_VERSION`, `VITE_APM_ENVIRONMENT`, `VITE_APM_ACTIVE`
+- `VITE_APM_SECRET_TOKEN` or `VITE_APM_API_KEY` (APM auth; note that the browser RUM agent does not actually send these, but the example documents them)
+
+## NPM Scripts
+
+From `package.json`:
+
+| Command | What It Does |
+| --- | --- |
+| `npm run dev` | Start Vite dev server with HMR and proxy rules |
+| `npm run build` | Type-check with `tsc` and build for production |
+| `npm run preview` | Preview the production build locally |
+| `npm run lint` | Run ESLint across the project |
+| `npm test` | Run Vitest in watch mode |
+| `npm run test:run` | Run Vitest once (used in CI) |
+| `npm run test:coverage` | Run Vitest with V8 coverage report |
+
+### Dev Server Proxy
+
+`vite.config.ts` configures a proxy for local development so API calls avoid CORS:
+
+```js
+server: {
+  proxy: {
+    '/api': {
+      target: 'https://pathfinder.isco-pipe.com:44444',
+      changeOrigin: true,
+      secure: false
+    }
+  }
+}
+```
+
+The same proxy is applied to the preview server. If you are running Navigator Services locally on `localhost:4443`, override with `VITE_API_BASE_URL=http://localhost:4443`.
+
+## Running with Docker
+
+The repo includes a multi-stage Dockerfile and a docker-compose setup for blue-green deployments.
+
+### Build and Run the Frontend Container
+
+```bash
+# Build the image
+docker build \
+  --build-arg VITE_APP_VERSION=0.9.0 \
+  --build-arg VITE_GIT_SHA=$(git rev-parse --short HEAD) \
+  -t navigator-frontend .
+
+# Run it
+docker run -p 8080:80 navigator-frontend
+```
+
+The Dockerfile (`Dockerfile`):
+
+1. Uses `node:22` as the build stage
+2. Runs `npm ci` and `npm run build`
+3. Copies the `dist` folder into `nginx:alpine`
+4. Serves on port 80 with `app-nginx.conf` (SPA fallback to `index.html`)
+
+### Full Blue-Green Stack (docker-compose.yaml)
+
+```yaml
+services:
+  proxy:
+    image: nginx:alpine
+    volumes:
+      - ./proxy-nginx.conf:/etc/nginx/templates/default.conf.template
+      - ${cert_path}:/etc/nginx/server.crt
+      - ${key_path}:/etc/nginx/server.key
+    ports:
+      - "443:443"
+    environment:
+      - ACTIVE_HOST=${ACTIVE_HOST:-frontend-blue:80}
+    depends_on:
+      - frontend-blue
+      - frontend-green
+
+  frontend-blue:
+    build:
+      context: .
+      args:
+        VITE_APP_VERSION: ${VITE_APP_VERSION:-}
+        VITE_GIT_SHA: ${VITE_GIT_SHA:-}
+    container_name: frontend-blue
+
+  frontend-green:
+    build:
+      context: .
+      args:
+        VITE_APP_VERSION: ${VITE_APP_VERSION:-}
+        VITE_GIT_SHA: ${VITE_GIT_SHA:-}
+    container_name: frontend-green
+```
+
+The proxy nginx config (`proxy-nginx.conf`) listens on 443 with SSL and routes to whichever `ACTIVE_HOST` is set. This is the same mechanism used in production deployment.
+
+## Running with PM2
+
+For production-like local runs without Docker, use the included `ecosystem.config.cjs`:
+
+```js
+module.exports = {
+  name: 'navigator',
+  script: "npm",
+  args: 'run preview',
+  env: {
+    NODE_ENV: 'production'
+  }
+}
+```
+
+Start it with:
+
+```bash
+pm2 start ecosystem.config.cjs
+```
+
+## Testing
+
+### Unit Tests (Vitest)
+
+Tests are co-located in `__tests__/` directories alongside source files. The runner is configured in `vitest.config.ts`:
+
+- **Environment**: `jsdom`
+- **Setup file**: `src/test/setup.ts`
+- **Timezone**: pinned to `America/New_York` so time assertions are stable across CI and dev machines
+- **Coverage**: V8 provider, excludes `node_modules/`, `src/test/`, `*.d.ts`, `main.tsx`, `vite-env.d.ts`
+
+```bash
+npm test          # watch mode
+npm run test:run  # single run (CI)
+npm run test:coverage
+```
+
+### End-to-End Tests (Playwright)
+
+The `e2e/` directory contains Playwright scripts that drive the real app against real APIs. These are **not** part of CI because they require:
+
+1. The dev server running on `http://localhost:5173`
+2. The Pathfinder API running on `http://localhost:4443`
+3. A captured auth session (`.auth/session.json`, gitignored)
+
+#### Capture an Auth Session (once, interactive)
+
+```bash
+node e2e/session.mjs
+```
+
+This opens a headed Chromium window. Sign in with your ISCO account (Entra + Duo), then leave the window alone. The script saves tokens to `.auth/session.json`.
+
+#### Run E2E Checks
+
+```bash
+node e2e/recon.mjs              # mount check + control inventory + load-time requests
+node e2e/check-ui.mjs           # desktop layout and request volume
+node e2e/check-ui.mjs --mobile  # iPhone viewport (390x844, touch)
+node e2e/check-ui.mjs --headed  # watch it happen
+```
+
+**Important safety rule**: `e2e/guard.mjs` intercepts every request and blocks any non-GET write against the API unless the path is on an explicit read-only allowlist. The local API talks to **production databases**, so never disable the guard when running e2e scripts.
+
+Key e2e traps documented in `e2e/README.md`:
+
+- Screenshots written inside the repo trigger Vite HMR and inflate request counts
+- Mapbox popups do not close on Escape; clear them explicitly before clicking pins
+- `hasText` is substring match: use `^Activities$` regex to avoid false matches
+- The desktop settings dropdown closes on its own backdrop, not Escape
+
+## MSAL / Azure Auth in Local Dev
+
+MSAL is configured in `src/config/msalConfig.ts` with a hardcoded client ID and tenant authority. In local development, the app will redirect to Azure for sign-in. Make sure your redirect URI (`http://localhost:5173` or `http://localhost:4173`) is registered in the Azure app registration.
+
+If you need to test without Azure, mock the auth layer in `src/test/setup.ts` (the Vitest suite already mocks `getAccessToken` to return `'test-token'`).

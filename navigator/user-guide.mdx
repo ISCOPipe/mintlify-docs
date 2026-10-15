@@ -1,1 +1,122 @@
+---
+title: "Plan and Execute Trips with NaviGator"
+sidebarTitle: "User Guide"
+description: "Step-by-step guide for sales reps and managers using ISCO NaviGator to build itineraries, assign activities, and close out stops in the field."
+---
 
+NaviGator models every trip as a two-phase lifecycle: **Planning** (before any activities exist) and **Execution** (after stops are assigned as workflow activities). The UI is intentionally split along this line, so understanding the phase you are in determines which controls are available and where edits are persisted.
+
+This guide is grounded in the actual onboarding tour (`src/tour/onboardingTour.ts`) and the planning-vs-execution document (`markdown/planning-vs-execution.md`). It describes only features that exist in the codebase.
+
+## Planning Phase: Build the Itinerary
+
+### 1. Load Nearby Places
+
+Open the app and press **Search Area** (desktop header or mobile actions menu). The app queries the Navigator Services API for every customer, plant, project, landfill, capital project, and opportunity inside the current map viewport. Results appear as colored pins on the map and as scrollable cards in the side panel.
+
+- **Customers**: blue pins
+- **Plants**: green pins
+- **Projects**: teal pins
+- **Landfills**: brown pins
+- **Capital Projects**: purple pins
+- **Opportunities**: orange pins
+
+You can filter by market segment, SIC code, PEC timing, sales stage, and more via the **Settings** panel (gear icon).
+
+### 2. Add Stops
+
+Click any pin to open its detail card, then press **Add as Stop**. The app reverse-geocodes the address, looks up the timezone by coordinates, and appends the stop to your itinerary. If you drop a pin manually, the tour will auto-snap it to the nearest road so it is routable.
+
+Supported stop sources (from `src/types/stop.ts`):
+
+| Source | How Added |
+| --- | --- |
+| Customer | Click pin or search by name |
+| Plant | Click pin or search by name |
+| Project | Click pin or search by name |
+| Landfill | Click pin or search by name |
+| Capital Project | Click pin or search by name |
+| Opportunity / Quote | Click opportunity pin, then select a child quote or customer |
+| Manual Address | AddressSearch bar or dropped pin |
+| Workflow Task | Pull from the Activities tab (see Execution) |
+
+### 3. Reorder and Optimize
+
+Stops can be reordered by drag-and-drop in the **Stops** sidebar (desktop) or the **Itinerary** panel (mobile). Press **Optimize** to run the route optimizer, which:
+
+1. Clusters nearby stops geographically (`clusterRoutingService.ts`)
+2. Uses Mapbox Optimization API for each cluster (`routeOptimizationService.ts`)
+3. Respects fixed-time appointments and day boundaries (`scheduleCalculator.ts`)
+
+If you have fixed-time appointments (e.g., a lunch meeting at 12:00), tick **Scheduled Visit** on that stop and set the time. The optimizer will anchor that stop and arrange flexible stops around it.
+
+### 4. Set Visit Details
+
+Expand any stop card to set:
+
+- **Contacts**: Search HubSpot contacts or create a new one. These carry through to the activity when assigned.
+- **Visit Reason**: Required before assignment. This becomes the activity type in Pipeline.
+- **Scheduled Visit**: Optional fixed-time appointment.
+- **Visit Time (min)**: How long you plan to stay (default 15 minutes).
+
+### 5. Save or Export
+
+Before assigning, you can:
+
+- **Save Itinerary**: Stores the full itinerary to the backend with a name and document ID (`itinerarySaveService.ts`).
+- **Export to Outlook**: Generates an `.ics` calendar file with all stops and travel times (`exportService.ts`).
+- **Export to Google Maps**: Opens a Google Maps directions link with all waypoints.
+- **Export to PDF**: Generates a printable itinerary with a static map image.
+
+## Execution Phase: Run the Trip
+
+### 1. Pull Assigned Activities
+
+Switch to the **Activities** tab to see series assigned to you. Each series is a trip planned by a manager or by yourself. Press **Work on this** to activate a series, or **Add Stop** to pull an individual activity into the builder.
+
+When you pull a stop, it arrives with its `wfactId` (workflow activity ID), scheduled time, contacts, and visit reason already populated from the backend.
+
+### 2. Close Out Stops
+
+After visiting a stop, expand its card and press **Complete Stop** (or **Defer Stop** if no one was available). The close flow (`CloseStopModal.tsx`) requires:
+
+- A note describing what happened
+- Confirmation of which contacts were actually met (you can add or remove contacts)
+
+Closing with contacts marks the activity as completed in Pipeline. Closing without contacts defers it. The stop card grays out once closed.
+
+### 3. Real-Time Edits During Execution
+
+Every edit to an activity-backed stop (`wfactId` set) writes through to the backend immediately:
+
+| Edit | API Call |
+| --- | --- |
+| Stop name | `editActivityName` |
+| Scheduled time / visit time | `useActivityScheduleSync` -> `editActivitySchedule` |
+| Contact added/removed | `addActivityContacts` / `removeActivityContacts` |
+| Close-out (note + status) | `UnifiedStopCard.finishClose` |
+
+## Desktop vs Mobile Layout
+
+| Feature | Desktop | Mobile |
+| --- | --- | --- |
+| Planning sidebar | Left **Stops** panel | **Itinerary** tab (combined) |
+| Generated schedule | Right **Itinerary** panel | **Itinerary** tab (combined) |
+| Map | Center, always visible | **Map** tab |
+| Activities | **Activities** tab | **Activities** tab |
+| Settings | Gear icon in header | Gear icon in bottom nav |
+| Search | Header bar | Search drawer |
+
+The mobile **Itinerary** tab uses `UnifiedStopCard` with `executeOnly={false}`, so it supports both planning and execution in one card. The desktop right panel uses `executeOnly={true}` when rendering assigned activities, hiding planning-only controls like the stop name editor.
+
+## Onboarding Tour
+
+New users can launch the guided tour from **Settings > Advanced > Replay Tutorial**. The tour (`src/tour/onboardingTour.ts`) walks through:
+
+1. Loading the map with Search Area
+2. Clicking the nearest pin and adding it as a stop
+3. Expanding the stop card to see contacts, visit reason, and scheduled visit
+4. Assigning the day as activities
+5. Opening settings to configure working hours, layers, and route type
+
+The tour is interactive: most steps wait for the user to perform the action rather than just narrating it. A "Skip step" button is always available.
