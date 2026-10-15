@@ -20,6 +20,7 @@ cd isco
 | Product | Repositories | Next step |
 | --- | --- | --- |
 | Pipeline | `pipeline`; add `services_hot_reload` for API work | [Local setup](/pipeline/local-setup) |
+| Pip | Choose its assistant, retrieval, knowledge-management, or ingestion component | [Pip setup](/pip/setup) |
 | Parrot | `pipeline`, `quote_builder_orchestration`, `quote_builder_aws` | [Worker setup](/parrot/worker-setup) and [orchestration setup](/parrot/orchestration-setup) |
 | QMD | `qmd_weld_app_windows`, `qmd_weld_app_web`, `qmd_weld_app_api` | [QMD setup](/qmd/setup) |
 | ISCO NaviGator | `itinerary-builder`, `navigator_services` | [App setup](/navigator/app-setup) and [services setup](/navigator/services-setup) |
@@ -39,6 +40,7 @@ The [source map](/source-map) lists supporting repositories and the branches use
 - **TypeScript services:** Node.js and npm. Use the repository's lockfile with `npm ci` and check its current runtime requirements.
 - **ISCO NaviGator frontend:** a Node.js version supported by the installed Vite toolchain. Its Vite 7 dependencies require a newer runtime than an arbitrary Node 20 installation.
 - **Parrot Python services:** Python 3.12 or later and `uv` for the worker. AWS access and external providers are needed for a full processing run.
+- **Pip:** separate Python/Chalice applications and composed libraries. Its assistant dependency layout, ingestion resources, and NLI runtime differ. Follow [Pip setup](/pip/setup); there is no single shared start command.
 - **QMD:** Windows and Visual Studio with the workloads required by each .NET Framework or UWP solution. Do not substitute a portable `dotnet build` command without checking the project targets.
 
 ## 4. Start and check one layer at a time

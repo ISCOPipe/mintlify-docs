@@ -22,17 +22,9 @@ The overlap guard is an in-memory set in one process. It does not prevent duplic
 
 Read `scheduled_jobs/CLAUDE.md` and the current package scripts before development. Offline Jest checks and `test:live` are different paths. Migration scripts mutate external data: review them, apply `001` before `002`, and quote their filename glob. They do not maintain a migration-state table that makes repeats automatically safe.
 
-## News-feed reports
+## News-report integration
 
-`pip-news-feed-report-service` runs asynchronous reports. Use bearer authentication for protected routes. `POST /runs` accepts the report date and returns `202`; the run status and download routes let a client follow the result. The service also exposes `/healthz`.
-
-1. Submit one run for the intended date.
-2. Save its returned identifier.
-3. Poll its status rather than resubmitting while it works.
-4. Download the stored result when the run is complete.
-5. Check notification records separately if email delivery matters.
-
-A completed run means the report was stored, not that email reached a recipient. Notification retries are capped at three; delivery is not exactly once. Runs older than three hours can be treated as stale. The render path can send email. A dry run can still call paid services and store output, so it is not an offline check.
+The scheduler can trigger the separate Culvert lead-report service, and Pipeline's emailer can deliver its callback. This does not make the report generator part of the intranet runtime or every scheduled job part of Pip. Use the [news-report guide](/pip/news-reports) for run status, setup, and delivery limits.
 
 ## Direct S3 uploads
 
@@ -65,4 +57,4 @@ The daily schedule is fixed at 08:00 UTC. Do not describe it as a fixed 03:00 lo
 
 ## Source reference
 
-Start with the scheduler registry and job modules in `scheduled_jobs`, the run and notification handlers in `pip-news-feed-report-service`, the presign/config handlers in `s3-upload-portal`, and the reporting and power-state logic in `tracker-edge`.
+Start with the scheduler registry and job modules in `scheduled_jobs`, the presign/config handlers in `s3-upload-portal`, and the reporting and power-state logic in `tracker-edge`.

@@ -1,0 +1,65 @@
+---
+title: "Use Pip's assistant and knowledge APIs"
+sidebarTitle: "API reference"
+description: "Distinguish answering, conversation history, curated knowledge, and model inference contracts."
+---
+
+## Connect to the correct API
+
+The assistant and knowledge-management applications are separate Chalice applications. Use the configured origin and gateway stage for each. Do not add `/api/v1` just because Pipeline Services uses that prefix.
+
+Their inspected authentication guards read `x-api-key` and return `403` for an invalid key. Use `x-api-key: <pip-api-key>` for actions protected by that guard. This is not the MCP bearer key or the NaviGator Azure token. Inspect the selected handler's guard and deployment controls rather than assuming every route has uniform protection. Never copy embedded source keys or log a request header.
+
+## Assistant routes
+
+Routes come from `pipeline-agent-experiments-endpoint/app.py`.
+
+| Route | Declared methods | Purpose |
+| --- | --- | --- |
+| `/memoryless_summarize` | GET, POST | Summarize supplied content |
+| `/memoryless_qa` | GET, POST | Answer without the conversational-history path |
+| `/conversational_qa` | GET, POST | Answer with conversation and organizational context |
+| `/magentic_qa` | GET, POST | Agent-oriented answering path |
+| `/get_messages_by_conversation_id` | POST | Read conversation messages |
+| `/get_all_conversations_by_user_id` | POST | Read a user's conversation list |
+| `/get_feedback_types` | POST | Discover feedback choices |
+| `/post_feedback_by_message_id` | POST | Submit message feedback |
+
+Use the route's request handling as the schema. A declared GET method is not proof that a request has no writes or provider cost. Conversation, feedback, and generated metadata can persist state.
+
+Pipeline's PHP conversational proxy sends `query`, `user_id`, context/feedback options, and optional `conversation_id` and `message_id`. It is an integration example, not a substitute for the assistant handler's contract.
+
+The memoryless path exposes a citation option. The conversational implementation forces speculation, reranking, Markdown, and citations on. Do not promise that setting those client flags to false disables them. Check source material behind a citation; generation is not source approval.
+
+## Knowledge-management routes
+
+The active app is `pipeline-agent-km/pipeline-agent-km/app.py`. Each route below declares POST and has an OPTIONS handler for browser preflight.
+
+| Route | Task |
+| --- | --- |
+| `/return_similar_questions` | Find related question records |
+| `/return_similar_chunks` | Find related source chunks |
+| `/check_contradictions` | Compare statements for contradiction |
+| `/submit_new_qa` | Create a knowledge record |
+| `/submit_new_evalqa` | Create an evaluation question/answer record |
+| `/submit_modified_qa` | Change a knowledge record |
+| `/submit_annotated_qa` | Submit annotations |
+| `/resolve_feedback` | Apply feedback resolution |
+
+Preflight OPTIONS bypasses the API-key check. Actual action requests still need their guard. Allowed-origin CORS headers do not grant data access. Treat submit and resolve routes as writes; use approved development records, and verify persistence before retrying.
+
+## Retrieval and inference interfaces
+
+`POST /bm25_search` belongs to the keyword service, not the assistant app. It excludes retired chunks and refreshes its search data periodically. See [ingestion and retrieval](/pip/document-retrieval).
+
+The experimental retrieval repository supplies library code; its `backend/app.py` is commented out. Do not point clients at assumed routes from that file. NLI uses a separate internal gRPC interface on port `50051`, with contradiction, entailment, and neutral results. Neither component is interchangeable with the conversational API.
+
+## Troubleshoot by layer
+
+1. Verify origin, gateway stage, route method, and the expected authentication type.
+2. For browser errors, distinguish a failed OPTIONS response from the actual POST response.
+3. For a missing fact, check ingestion, retirement, and retrieval before changing a prompt.
+4. For an empty generated answer, inspect provider errors: the LLM adapter warns on null content and returns an empty string, while provider exceptions are raised again.
+5. Before retrying a feedback or knowledge write, verify whether the first request committed.
+
+See the [Pip architecture](/pip/architecture) for system boundaries and the [source map](/source-map) for inspected revisions.

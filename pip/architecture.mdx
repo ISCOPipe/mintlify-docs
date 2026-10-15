@@ -1,0 +1,36 @@
+---
+title: "Trace Pip's architecture"
+sidebarTitle: "Architecture"
+description: "Separate the assistant request path, source ingestion, curated knowledge, and shared integrations."
+---
+
+## Assistant request path
+
+1. A user asks a question through an interface. Pipeline's `inc/ajax_drippy.php` is one integration: it forwards a JSON query, user identity, context options, and optional conversation/message identifiers to `conversational_qa`.
+2. `pipeline-agent-experiments-endpoint/app.py` handles the assistant request. Its memoryless and conversational paths have different behavior.
+3. Retrieval code from `pipeline-agent-experiments-km` supplies organizational context. The hybrid store combines keyword and vector retrieval and excludes retired content.
+4. Provider adapters from `pipeline-agent-experiments-llm` call the configured models.
+5. The endpoint returns the answer and handles conversation/history and feedback through separate routes.
+
+The PHP proxy is an integration boundary, not the assistant backend. These routes do not live under `services_hot_reload/src/api/`. Do not apply the Pipeline Services URL pattern or NaviGator authentication contract to Pip.
+
+## Source ingestion path
+
+SharePoint files pass through the scanner, S3, an SQS parse queue, and ETL before they become searchable chunks. BM25 maintains a keyword-search view with periodic refreshes. This path updates source material; it does not directly create a conversation or a reviewed answer.
+
+Read the [ingestion guide](/pip/document-retrieval) for retirement, replacement, and retry limits. A failed replacement can retire old content before new content commits.
+
+## Curated knowledge and model inference
+
+`pipeline-agent-km/pipeline-agent-km/app.py` exposes the active knowledge-management API. It searches questions/chunks, checks contradictions, and accepts knowledge or feedback changes. Do not confuse it with `pipeline-agent-experiments-km/backend/app.py`, whose routes are commented out.
+
+`pipeline-agent-nli-model-deploy` provides a separate DeBERTa gRPC classifier for contradiction, entailment, and neutral labels. Its insecure internal transport is not a public HTTPS API. The LLM adapter and NLI classifier serve different purposes.
+
+## Adjacent systems
+
+- **Pipeline:** hosts an interface and proxies requests; it remains the intranet product.
+- **MCP tools:** expose shared business-data lookups. A tool's availability does not establish that every Pip route uses it.
+- **News reporting:** `pip-news-feed-report-service` runs a separate Culvert lead-report workflow. Source verifies a scheduler trigger and an emailer callback, not a shared conversational runtime.
+- **Scheduled jobs:** operate multiple systems. Keep their schedules and retries separate from Pip's document scanner.
+
+See the [source map](/source-map) for exact snapshots. The map describes code boundaries, not a guarantee that every component is deployed together.

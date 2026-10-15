@@ -34,18 +34,21 @@ Start with the guide for your task. Follow the commit link when you need to comp
 | [opportunity_mcp](https://github.com/ISCOPipe/opportunity_mcp) | `main` | [`56d7bee`](https://github.com/ISCOPipe/opportunity_mcp/commit/56d7beeba45ab75710c5511a34383f2ea90cdf4a) | [Open guide](/pipeline/supporting/mcp-tools) |
 | [qovc_mcp](https://github.com/ISCOPipe/qovc_mcp) | `main` | [`6cbfece`](https://github.com/ISCOPipe/qovc_mcp/commit/6cbfece2668279b943176942aaaf6f6007bb2eb0) | [Open guide](/pipeline/supporting/mcp-tools) |
 
-## Document retrieval
+## Pip
+
+Pip owns these ingestion, retrieval, answering, knowledge-management, and model components. The news-report row is an adjacent service with a separate scheduler/emailer workflow, not part of the conversational runtime. See [Pip architecture](/pip/architecture).
 
 | Repository | Branch | Inspected revision | Guide |
 | --- | --- | --- | --- |
-| [pipeline-agent-etl-scanner](https://github.com/ISCOPipe/pipeline-agent-etl-scanner) | `main` | [`388a293`](https://github.com/ISCOPipe/pipeline-agent-etl-scanner/commit/388a29399195b9dfd803f1da15c8573608c9e0b5) | [Open guide](/pipeline/supporting/document-retrieval) |
-| [pipeline-agent-etl](https://github.com/ISCOPipe/pipeline-agent-etl) | `main` | [`f72d54e`](https://github.com/ISCOPipe/pipeline-agent-etl/commit/f72d54e4cd4b1d4036241811d6d5183a88bae91b) | [Open guide](/pipeline/supporting/document-retrieval) |
-| [pipeline-agent-bm25-search](https://github.com/ISCOPipe/pipeline-agent-bm25-search) | `main` | [`5a2be6b`](https://github.com/ISCOPipe/pipeline-agent-bm25-search/commit/5a2be6b97f92b27aacd1f04933df70b15180f7ce) | [Open guide](/pipeline/supporting/document-retrieval) |
-| [pipeline-agent-experiments-km](https://github.com/ISCOPipe/pipeline-agent-experiments-km) | `main` | [`ecb24ae`](https://github.com/ISCOPipe/pipeline-agent-experiments-km/commit/ecb24aec3e4cd33c3d47e3d7191d2318c988f886) | [Open guide](/pipeline/supporting/document-retrieval) |
-| [pipeline-agent-km](https://github.com/ISCOPipe/pipeline-agent-km) | `main` | [`4a8c085`](https://github.com/ISCOPipe/pipeline-agent-km/commit/4a8c0854693a8d5ec100c854121347e911d066aa) | [Open guide](/pipeline/supporting/document-retrieval) |
-| [pipeline-agent-experiments-endpoint](https://github.com/ISCOPipe/pipeline-agent-experiments-endpoint) | `main` | [`aeb2054`](https://github.com/ISCOPipe/pipeline-agent-experiments-endpoint/commit/aeb205490894669082cb73332f662b235abf5d64) | [Open guide](/pipeline/supporting/document-retrieval) |
-| [pipeline-agent-experiments-llm](https://github.com/ISCOPipe/pipeline-agent-experiments-llm) | `main` | [`f2e978c`](https://github.com/ISCOPipe/pipeline-agent-experiments-llm/commit/f2e978ca68e4ea877c59a330295c1d5f049d4978) | [Open guide](/pipeline/supporting/document-retrieval) |
-| [pipeline-agent-nli-model-deploy](https://github.com/ISCOPipe/pipeline-agent-nli-model-deploy) | `main` | [`4b69b5c`](https://github.com/ISCOPipe/pipeline-agent-nli-model-deploy/commit/4b69b5c97a572489154dfd8a68d6e6c4750e71d6) | [Open guide](/pipeline/supporting/document-retrieval) |
+| [pipeline-agent-etl-scanner](https://github.com/ISCOPipe/pipeline-agent-etl-scanner) | `main` | [`388a293`](https://github.com/ISCOPipe/pipeline-agent-etl-scanner/commit/388a29399195b9dfd803f1da15c8573608c9e0b5) | [Open guide](/pip/document-retrieval) |
+| [pipeline-agent-etl](https://github.com/ISCOPipe/pipeline-agent-etl) | `main` | [`f72d54e`](https://github.com/ISCOPipe/pipeline-agent-etl/commit/f72d54e4cd4b1d4036241811d6d5183a88bae91b) | [Open guide](/pip/document-retrieval) |
+| [pipeline-agent-bm25-search](https://github.com/ISCOPipe/pipeline-agent-bm25-search) | `main` | [`5a2be6b`](https://github.com/ISCOPipe/pipeline-agent-bm25-search/commit/5a2be6b97f92b27aacd1f04933df70b15180f7ce) | [Open guide](/pip/document-retrieval) |
+| [pipeline-agent-experiments-km](https://github.com/ISCOPipe/pipeline-agent-experiments-km) | `main` | [`ecb24ae`](https://github.com/ISCOPipe/pipeline-agent-experiments-km/commit/ecb24aec3e4cd33c3d47e3d7191d2318c988f886) | [Open guide](/pip/architecture) |
+| [pipeline-agent-km](https://github.com/ISCOPipe/pipeline-agent-km) | `main` | [`4a8c085`](https://github.com/ISCOPipe/pipeline-agent-km/commit/4a8c0854693a8d5ec100c854121347e911d066aa) | [Open guide](/pip/api) |
+| [pipeline-agent-experiments-endpoint](https://github.com/ISCOPipe/pipeline-agent-experiments-endpoint) | `main` | [`aeb2054`](https://github.com/ISCOPipe/pipeline-agent-experiments-endpoint/commit/aeb205490894669082cb73332f662b235abf5d64) | [Open guide](/pip/api) |
+| [pipeline-agent-experiments-llm](https://github.com/ISCOPipe/pipeline-agent-experiments-llm) | `main` | [`f2e978c`](https://github.com/ISCOPipe/pipeline-agent-experiments-llm/commit/f2e978ca68e4ea877c59a330295c1d5f049d4978) | [Open guide](/pip/architecture) |
+| [pipeline-agent-nli-model-deploy](https://github.com/ISCOPipe/pipeline-agent-nli-model-deploy) | `main` | [`4b69b5c`](https://github.com/ISCOPipe/pipeline-agent-nli-model-deploy/commit/4b69b5c97a572489154dfd8a68d6e6c4750e71d6) | [Open guide](/pip/architecture) |
+| [pip-news-feed-report-service](https://github.com/ISCOPipe/pip-news-feed-report-service) | `main` | [`39cae57`](https://github.com/ISCOPipe/pip-news-feed-report-service/commit/39cae570d14593e2fa2af70d1f0d53f4795e8d4b) | [Open guide](/pip/news-reports) |
 
 ## Development and operations
 
@@ -53,7 +56,6 @@ Start with the guide for your task. Follow the commit link when you need to comp
 | --- | --- | --- | --- |
 | [pipeline-container](https://github.com/ISCOPipe/pipeline-container) | `main` | [`d5e2e2b`](https://github.com/ISCOPipe/pipeline-container/commit/d5e2e2b4297b4a904dade3e477981a2423b252d2) | [Open guide](/pipeline/supporting/development-container) |
 | [scheduled_jobs](https://github.com/ISCOPipe/scheduled_jobs) | `main` | [`c30d77f`](https://github.com/ISCOPipe/scheduled_jobs/commit/c30d77fef49ea7f6939096c342e40fd9d9352796) | [Open guide](/pipeline/supporting/operations) |
-| [pip-news-feed-report-service](https://github.com/ISCOPipe/pip-news-feed-report-service) | `main` | [`39cae57`](https://github.com/ISCOPipe/pip-news-feed-report-service/commit/39cae570d14593e2fa2af70d1f0d53f4795e8d4b) | [Open guide](/pipeline/supporting/operations) |
 | [s3-upload-portal](https://github.com/ISCOPipe/s3-upload-portal) | `main` | [`60ed7d6`](https://github.com/ISCOPipe/s3-upload-portal/commit/60ed7d6af04781cf175b3cd338f8a16f69275051) | [Open guide](/pipeline/supporting/operations) |
 | [tracker-edge](https://github.com/ISCOPipe/tracker-edge) | `main` | [`5b58e3b`](https://github.com/ISCOPipe/tracker-edge/commit/5b58e3b4bfecf8f45d7f3e2ded3743627711645c) | [Open guide](/pipeline/supporting/operations) |
 

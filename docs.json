@@ -46,10 +46,20 @@
             "pages": [
               "pipeline/supporting/development-container",
               "pipeline/supporting/mcp-tools",
-              "pipeline/supporting/document-retrieval",
               "pipeline/supporting/operations"
             ]
           }
+        ]
+      },
+      {
+        "group": "Pip",
+        "pages": [
+          "pip/overview",
+          "pip/architecture",
+          "pip/setup",
+          "pip/api",
+          "pip/document-retrieval",
+          "pip/news-reports"
         ]
       },
       {

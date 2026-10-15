@@ -1,0 +1,43 @@
+---
+title: "Prepare a Pip development environment"
+sidebarTitle: "Setup"
+description: "Choose Pip's component and dependency layout without triggering production ingestion or deployment."
+---
+
+## Choose one component
+
+| Task | Repository and working directory |
+| --- | --- |
+| Answering API | `pipeline-agent-experiments-endpoint/` |
+| Retrieval library | `pipeline-agent-experiments-km/` |
+| Model-provider adapter | `pipeline-agent-experiments-llm/` |
+| Knowledge-management API | `pipeline-agent-km/pipeline-agent-km/` |
+| Document ingestion | `pipeline-agent-etl-scanner/` and `pipeline-agent-etl/` |
+| Keyword retrieval | `pipeline-agent-bm25-search/` |
+| NLI classifier | `pipeline-agent-nli-model-deploy/` |
+
+Use the [source map](/source-map) for repository links. These Python components do not share one npm project or one start command.
+
+## Prepare the assistant API
+
+1. Clone `pipeline-agent-experiments-endpoint` into your development workspace.
+2. Create an isolated Python environment. The deployment tooling references Python 3.12; match the runtime for the environment you maintain.
+3. Install Chalice and the dependency list from `prod_requirements.txt` in that environment.
+4. Clone `pipeline-agent-experiments-llm` into the endpoint repository's `chalicelib/llm/` directory and `pipeline-agent-experiments-km` into `chalicelib/km/`. This is the composition described by the endpoint README, not three independent HTTP servers.
+5. Obtain approved development settings for model providers, retrieval storage, AWS access, and API authentication. Do not copy embedded keys from source or notebooks.
+6. Inspect initialization before importing the application. Import-time setup can initialize external clients or access infrastructure; a local process is not an offline sandbox.
+
+Do not run the README's deployment, layer-publication, alias, gateway, or scaling commands to check a prose change or explore setup. Those commands change AWS resources. There is no verified single offline command that starts the complete Pip system.
+
+## Prepare another layer
+
+- **Knowledge management:** start from the nested Chalice application, not the commented experimental retrieval app. Inspect its dependencies and API-key guard before connecting a client.
+- **ETL and scanner:** each has `prod_requirements.txt` and its own Chalice application. Use approved fixtures and inspect the selected test before execution. Starting ingestion can copy files, queue messages, retire records, and write chunks.
+- **NLI:** install `requirements.txt` in its own environment. The source pins matching gRPC runtime/tools and constrains protobuf; choose a PyTorch wheel for the target hardware. Model loading can download weights and consume substantial memory. Do not expose the insecure gRPC listener publicly.
+- **News reports:** follow the [separate reporting setup](/pip/news-reports), not the assistant's Chalice workflow.
+
+## Verify a change safely
+
+First inspect imports, fixtures, mocks, and expected external effects. Use the selected repository's scoped offline tests when available; do not assume every notebook or script is a test. Do not call live providers, run scanners, mutate knowledge, or deploy merely to prove the code imports.
+
+When you connect a development client, verify the API host, route, authentication type, and target data separately. A successful Pipeline page load does not prove that Pip's backend or source index is healthy.

@@ -1,0 +1,23 @@
+---
+title: "Understand Pip"
+sidebarTitle: "Overview"
+description: "Find Pip's assistant, document ingestion, retrieval, knowledge-management, and model components."
+---
+
+**Pip** is the assistant and knowledge system. It is not another name for the Pipeline intranet. Pipeline provides an interface and integration points, while Pip's answering and knowledge services run separately.
+
+## Choose your task
+
+- **Trace an answer:** follow the [architecture](/pip/architecture) and [API reference](/pip/api).
+- **Prepare development:** use [Pip setup](/pip/setup). You do not need every component to inspect one layer.
+- **Investigate missing source material:** follow [document ingestion and retrieval](/pip/document-retrieval).
+- **Maintain curated knowledge:** use the knowledge-management API, not the document scanner.
+- **Work on news reports:** use the [adjacent news-reporting service](/pip/news-reports). It has its own runtime and workflow; it is not a conversational-answer endpoint.
+
+## Keep the systems distinct
+
+A document chunk is a searchable portion of an ingested file. A curated question-and-answer record is maintained knowledge, not simply another uploaded file. A conversation contains messages and history. A model inference classifies or generates text; it does not itself approve the source or the answer.
+
+Pip can use company data tools and can appear inside Pipeline. Those connections do not make every MCP server, scheduled job, or Pipeline API part of Pip. See [shared data tools](/pipeline/supporting/mcp-tools) and [shared operational services](/pipeline/supporting/operations) for their own contracts.
+
+The repositories retain historical names such as `pipeline-agent-*`. Use the [source map](/source-map) to locate their inspected revisions; a repository name is not a deployment guarantee.
