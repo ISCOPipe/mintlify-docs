@@ -1,1 +1,126 @@
+---
+title: "Pipeline repository layout: PHP pages, React bundles, and shared code"
+sidebarTitle: "Project Structure"
+description: "Navigate the Pipeline repo from root PHP pages and department folders to react-src/, inc/, Classes/, and the Vite build that outputs dist/."
+---
 
+The Pipeline intranet is a mixed PHP and React application. Most pages are traditional PHP scripts served by Apache, while newer screens are React apps built with Vite and embedded into PHP hosts. Understanding the folder layout helps you find the right file when adding a feature or fixing a bug.
+
+## Top-level layout
+
+```text
+pipeline/
+├── .github/workflows/          # CI/CD: deploy, compile_react, sync
+├── assets/                     # Static images, fonts, jvectormap data
+├── Classes/                    # PHP class library (Docuware, RSS, image, barcode)
+├── css/                        # Global styles: isco.css, materialize, event_log.css
+├── dist/                       # Vite build output (generated, not committed)
+├── executive/                  # Executive dashboards and charts
+├── ext/                        # Third-party JS libs (mentionsInput, dompdf, lottie)
+├── featherlight/               # Lightbox image viewer assets
+├── finance/                    # Finance module pages
+├── hr/                         # HR module pages
+├── images/                     # Image uploads and shared media
+├── inc/                        # Shared PHP includes: auth, functions, roles, ajax helpers
+├── it/                         # IT admin pages
+├── js/                         # Global JS: search, datatable filters, camera, address
+├── left/                       # Sidebar menu builder scripts
+├── marketing/                  # Marketing and tradeshow tools
+├── minia/                      # Minia theme assets
+├── ncr/                        # Non-conformance reports
+├── ops/                        # Operations module
+├── pipe/                       # Pipe vendor and opportunity dashboards
+├── production_planning/        # Production planning and scheduling
+├── quality/                    # Quality and scrap request tools
+├── react-src/                  # React source code and Vite entry points
+├── rental/                     # Rental fleet and equipment ops
+├── reports/                    # Cross-department reports
+├── sales/                      # Sales module: quotes, orders, opportunities
+├── scoreboard/                 # Fabrication scoreboards and adjustments
+├── supply_chain/               # Supply chain and procurement
+├── task/                       # Task and workflow engine
+├── vendor/                     # Composer vendor packages
+├── warehouse/                  # Warehouse and inventory pages
+├── auth.php                    # Authentication handler
+├── index.php                   # Main intranet homepage
+├── login.php                   # Login page
+├── _head.php                   # Shared HTML head include
+├── _footer.php                 # Shared footer include
+├── _top-left.php               # Top-left navigation panel
+├── _right.php                  # Right-side panel template
+├── _global_js_function.js      # Global JavaScript utilities
+├── composer.json               # PHP dependencies
+├── package.json                # Node dependencies
+├── vite.config.js              # Vite build configuration
+└── ...                         # Root-level PHP pages and HTML templates
+```
+
+## Key folders
+
+| Folder | What it holds | When you touch it |
+| --- | --- | --- |
+| `inc/` | Shared PHP includes: `auth.php`, `functions.php`, `roles.php`, `env.php`, and dozens of `ajax_search_*.php` helpers | Adding reusable PHP functions or AJAX endpoints |
+| `Classes/` | PHP classes for Docuware integration, RSS feeds, image manipulation, and barcode generation | Working with document scanning or barcode labels |
+| `react-src/` | React components and Vite entry points for modern screens | Building or editing React-based tools |
+| `dist/` | Compiled JS bundles from Vite (created by `npm run compile:react`) | Never edit directly; rebuild from `react-src/` |
+| `assets/` | Static theme assets, map data, and icon sets | Adding images or map layers |
+| `js/` | Shared vanilla JS: search, datatable filters, camera, drag-and-drop | Adding global client-side behavior |
+| `css/` | Global stylesheets including `isco.css` and theme CSS | Updating site-wide styling |
+| `vendor/` | Composer-installed packages (PHPMailer, PhpSpreadsheet, etc.) | After running `composer install` |
+
+## Department folders
+
+Each major business unit has its own folder under the repo root. These contain PHP pages, AJAX handlers, and sometimes subfolders for deeper features:
+
+| Folder | Department | Notable contents |
+| --- | --- | --- |
+| `sales/` | Sales | Quotes, orders, opportunities, invoices, TSM dashboards, customer history, Parrot integration |
+| `ops/` | Operations | Barcode reader, inventory tools |
+| `finance/` | Finance | Commission reports, BPN customer management, BillTrust, Stripe integration |
+| `hr/` | Human Resources | Employee directory, activity logging, profile picture uploads |
+| `quality/` | Quality | Scrap requests, approval rules, unprocessed reports |
+| `supply_chain/` | Supply Chain | Vendor spend, OTD tracking, stockout reports, MSPAT product management |
+| `warehouse/` | Warehouse | DC/FAB queue pages, picker stats |
+| `rental/` | Rental | Equipment check-in/out, fleet dashboards, revenue tracking, repair quotes |
+| `production_planning/` | Production Planning | Scheduling calendars, work order management, MAR reports, MSFAT master |
+| `executive/` | Executive | Consolidated dashboards, sales charts, inventory tables, DSO/AR views |
+| `marketing/` | Marketing | Tradeshow requests, booth management, material uploads |
+| `ncr/` | Quality (NCR) | Non-conformance forms, correction reasons, task management, PDF exports |
+| `task/` | Cross-functional | Workflow engine: credit requests, contract review, NCR closure, procurement |
+| `scoreboard/` | Fabrication | FAB scoreboards, on-time metrics, labor variance, adjustment forms |
+| `pipe/` | Pipe Supply | Pipe vendor dashboards, pipe opportunities |
+| `shipping/` | Shipping | Pick tickets, transfer details, warehouse shipments |
+| `distribution/` | Distribution | Barcode labels, QC labels |
+| `accounting/` | Accounting | AP discrepancy workflow, credit request forms, invoice detail |
+| `product/` | Product | BOM detail, rolling 12-month data, supplier quotes, top customers/vendors |
+| `pricing/` | Pricing | Price team dashboard, override tools |
+| `reports/` | Cross-department | Picker stats, rental revenue, misc parts on sales orders |
+| `legal/` | Legal | Legal opportunity dashboard, opportunity forms |
+| `it/` | IT | User account disable tools |
+
+## React build system
+
+Modern screens live in `react-src/` and are compiled by Vite. The build configuration in `vite.config.js` defines one entry point per screen:
+
+- `search.jsx` — Global search interface
+- `knowledge_mgt.jsx` — Knowledge management
+- `event_log.jsx` — Event logging
+- `vendor_quote_review.jsx` — Vendor quote review
+- `quote_builder.jsx` — Quote builder
+- `dc_fab_queue.jsx` — DC fabrication queue
+- `fab_dc_queue.jsx` — Fabrication DC queue
+- `bin_label_print.jsx` — Bin label printing
+
+Running `npm run compile:react` builds these into `dist/` as individual `.js` files. In local development, Vite watches `react-src/` and rebuilds automatically. In CI, `compile_react.yaml` builds and deploys the bundles to the Windows server.
+
+## Configuration files
+
+| File | Purpose |
+| --- | --- |
+| `composer.json` | PHP 8.2+ requirements: LDAP, ODBC, MySQLi, cURL, GD, plus PhpSpreadsheet and PHPMailer |
+| `package.json` | Node 20 dependencies: React 19, Vite 7, Axios, TanStack Query, DataTables, ApexCharts, Tailwind Merge |
+| `vite.config.js` | Vite root set to `react-src/`, output to `dist/`, rollup entry points for each React screen |
+
+<Note>
+  The `dist/` folder is generated and should not be committed. It is rebuilt on every deploy via the `compile_react.yaml` workflow.
+</Note>
