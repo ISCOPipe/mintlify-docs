@@ -18,6 +18,8 @@ The MCP repositories expose employee, product, opportunity, quote/order, and Ela
 
 Get the host and key through the approved environment configuration. The Elasticsearch, employee, and product services default to ports `9950`, `9952`, and `9954`, respectively. Binding to a network interface does not make a service safe for public access. Requests without the required key receive `401`.
 
+All five HTTP handlers require `Authorization: Bearer <mcp-key>`, where the key matches that server's setting in the table. Use the capitalized `Bearer` scheme: the middleware matches it case-sensitively. A missing server key, missing header, or mismatched key returns `401`. This shared MCP key is not an Azure access token.
+
 ## Resolve an entity before querying its records
 
 1. Inspect the service's schema or discovery tool. Do not assume that similarly named systems use the same field names.
@@ -40,11 +42,22 @@ Product tools normalize and broaden some searches. A lookup can fall back to a p
 
 ## Add a client safely
 
-1. Run the repository's documented dependency installation and local start command.
-2. Set the key in local configuration without committing it.
-3. Configure the MCP client with the service's full path and expected authentication header from its server middleware.
-4. Start with schema discovery and a read-only query against approved data.
-5. Check status, result shape, and pagination before integrating the result into another system.
+1. Open the package directory listed below. Each has a committed npm lockfile.
+2. Run `npm ci`, then obtain the service's development backend settings and MCP key through the approved configuration process. Keep local configuration untracked.
+3. Run `npm run build`, then `npm start`. All five start scripts run `npx -y tsx src/server.ts`; starting may require network access to obtain `tsx`.
+4. Configure the MCP client with the service's full HTTP path and `Authorization: Bearer <mcp-key>`.
+5. Start with schema discovery and a read-only query against approved data.
+6. Check status, result shape, and pagination before integrating the result into another system.
+
+| Repository | Package directory from the repository root | Build and start |
+| --- | --- | --- |
+| `elastic_mcp` | `elastic_mcp/` | `npm run build`, then `npm start` |
+| `employee_mcp` | `.` | `npm run build`, then `npm start` |
+| `product_mcp` | `.` | `npm run build`, then `npm start` |
+| `opportunity_mcp` | `.` | `npm run build`, then `npm start` |
+| `qovc_mcp` | `.` | `npm run build`, then `npm start` |
+
+These are start commands, not offline tests. The Elasticsearch test script calls its tool harness, and Product's `test:wet` exercises live search. Inspect external effects before running either.
 
 Do not paste keys or customer records into example tool calls. A tool server's available methods are not a substitute for your permission to use the underlying records.
 

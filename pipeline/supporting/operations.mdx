@@ -8,7 +8,7 @@ These services run outside the main product request paths. Confirm the environme
 
 ## Scheduled data updates
 
-`scheduled_jobs` runs Node.js jobs that synchronize operational data. It requires Node.js 22 or later. Its default weekday schedule is 08:00 in `America/New_York`; individual jobs override it. Culvert runs at 05:00 and its checker at 08:30. The iTop job runs daily at 03:00, with a full run on Sunday, using the process timezone rather than that shared timezone setting.
+`scheduled_jobs` runs Node.js jobs that synchronize operational data. It requires Node.js 22 or later. The registry schedules jobs in `America/New_York`; its default weekday time is 08:00. Individual jobs override the cron expression. Culvert runs at 05:00 and its checker at 08:30. The iTop job runs daily at 03:00 in that same registry timezone. Separately, iTop chooses a full run when `new Date().getDay()` reports Sunday in the process timezone. Those two timezone checks can differ.
 
 The overlap guard is an in-memory set in one process. It does not prevent duplicate work across multiple instances. Some jobs log a partial failure and continue. The Cority job advances its watermark only after all required work succeeds.
 

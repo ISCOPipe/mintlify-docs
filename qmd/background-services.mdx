@@ -125,9 +125,9 @@ The application reads from `App.config`:
 
 ## Calibration-check reminders
 
-The API repository also contains `Projects/IscoCallCheckReminder/IscoCallCheckReminder`. This Windows service checks every 10 seconds. It sends the transducer-check reminder on the day seven days before the last day of the month, using the server's local date.
+The web repository also contains `Projects/IscoCallCheckReminder/IscoCallCheckReminder`. This Windows service checks every 10 seconds. It sends the transducer-check reminder on the day seven days before the last day of the month, using the server's local date.
 
-The reminder queries transducers that lack the required check. A missing date appears as **Never**. Recipients come from the service's location/user query. Configure `IscoConnection`, the `MailServer*` settings, `FromAddress`, `SSL`, and the logo setting for that service's deployment.
+The reminder queries transducers that lack the required check. A missing date appears as **Never**. Recipients come from the service's location/user query. Configure `IscoConnection`, `MailServerUser`, `MailServerPassword`, `MailServerPort`, `MailServerHost`, and `SSL`. The sender uses `MailServerUser` as its From address. Include `Images/logo-original.png` under the service executable's startup directory; the logo is an asset, not a configuration key.
 
 <Warning>
 Do not rely on this service for exactly-once delivery. Its log update has no `WHERE` clause, it resets the reminder log outside the selected day, and its mail sender catches SMTP exceptions. A recorded attempt does not prove that a recipient received an email. Repeated manual starts can change shared log state.

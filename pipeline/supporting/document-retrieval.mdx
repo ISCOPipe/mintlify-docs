@@ -12,7 +12,7 @@ These repositories support document retrieval and AI experiments. They do not fo
 2. The scanner queues parsing work. Its inspected code forces its test flag to `false`; do not assume a local invocation is a dry run.
 3. `pipeline-agent-etl` processes the FIFO queue with a batch size of one.
 4. A parser extracts text from supported PDF, DOCX, PPTX, XLSX, CSV, or HTML files.
-5. The worker splits text into chunks and writes the document's records in a database transaction. The normal chunk target is 300 tokens, with a 150-token tail threshold.
+5. The worker splits text into chunks and writes the document's records in a database transaction. Its minimum-size pass measures payload characters, excluding the file-path header. It merges chunks below 300 characters forward and appends a final chunk below 150 characters to the previous chunk. A document that consists of one short, nonempty chunk stays intact because there is no neighbor to merge with.
 6. Retrieval services search the active records. Removal events retire a document rather than treating it as current content.
 
 ## Understand replacement and failure behavior

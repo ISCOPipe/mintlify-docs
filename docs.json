@@ -40,6 +40,15 @@
               "pipeline/services/adding-a-service",
               "pipeline/services/deployment"
             ]
+          },
+          {
+            "group": "Supporting services",
+            "pages": [
+              "pipeline/supporting/development-container",
+              "pipeline/supporting/mcp-tools",
+              "pipeline/supporting/document-retrieval",
+              "pipeline/supporting/operations"
+            ]
           }
         ]
       },
@@ -77,15 +86,6 @@
           "navigator/services-setup",
           "navigator/services-api",
           "navigator/deployment"
-        ]
-      },
-      {
-        "group": "Supporting services",
-        "pages": [
-          "supporting/development-container",
-          "supporting/mcp-tools",
-          "supporting/document-retrieval",
-          "supporting/operations"
         ]
       }
     ]

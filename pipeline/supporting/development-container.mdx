@@ -20,7 +20,7 @@ The startup exposes the read-only host mount through a `/mnt/t_ro` link. Keep sh
 2. Follow its WSL setup when running from Windows. Enable the required Docker/WSL integration before starting the container.
 3. Place the Pipeline checkout and approved local configuration at the mount paths that Compose expects.
 4. Configure host identity mapping and development authentication, including Kerberos where your environment requires it.
-5. Start the documented development service and inspect Composer, npm, and Apache logs separately.
+5. In WSL, open the Pipeline checkout that has the required Compose configuration and run `docker compose up -d --build`. Run it from `pipeline/`, not `pipeline-container/`. Inspect Composer, npm, and Apache logs separately. For VS Code, use **WSL: Connect to WSL**, open `pipeline/`, then select **Dev Containers: Rebuild and Reopen in Container** when the required dev-container configuration is present.
 6. Open the forwarded development site. The documented VS Code path uses `localhost:8080`; check your Compose port mapping if that address differs.
 7. Build the React code with Pipeline's documented `npm run compile:react` command before checking a changed bundle.
 
