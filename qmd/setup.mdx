@@ -1,0 +1,75 @@
+---
+title: "Set up the QMD weld app solutions from GitHub"
+sidebarTitle: "Setup"
+description: "Clone the three QMD repositories, install Visual Studio workloads and .NET Framework targeting packs, configure Web.config locally, and run each solution."
+---
+
+QMD is built from three Visual Studio solutions. This guide covers cloning them from GitHub and running the web portal, the API, and the Windows field app on a development machine.
+
+## Requirements
+
+- Windows 10 or 11
+- Visual Studio with these workloads:
+  - **ASP.NET and web development** (with .NET Framework 4.5.1 and 4.6.1 targeting packs)
+  - **Universal Windows Platform development** (Windows 10 SDK 10.0.22621)
+- Network access to the QMD SQL Server
+- Configuration values (connection strings, Azure AD, AWS, mail settings) from your team lead
+
+## Clone the repositories
+
+```bash
+git clone https://github.com/iscopipe/qmd_weld_app_web.git
+git clone https://github.com/iscopipe/qmd_weld_app_api.git
+git clone https://github.com/iscopipe/qmd_weld_app_windows.git
+```
+
+## Run each solution
+
+<Tabs>
+  <Tab title="Web portal">
+    <Steps>
+      <Step title="Open the solution">
+        Open `qmd_weld_app_web/ISCOWeb.sln`.
+      </Step>
+      <Step title="Restore NuGet packages">
+        Right-click the solution and choose **Restore NuGet Packages** (the project uses `packages.config`).
+      </Step>
+      <Step title="Configure Web.config">
+        Set the `DefaultConnection`, `DashboardConnection`, and `ISCOEntities` connection strings, the `ida:*` Azure AD settings, and the other `appSettings` values for your environment. Set `SiteURL` to your local IIS Express address.
+      </Step>
+      <Step title="Run">
+        Set `ISCOWeb` as the startup project and press **F5**. It runs on IIS Express.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="API">
+    <Steps>
+      <Step title="Open the solution">
+        Open `qmd_weld_app_api/ISCO-API.sln` and restore NuGet packages.
+      </Step>
+      <Step title="Configure Web.config">
+        Set the `DefaultConnection` and `weldmanagementapplicationEntities` connection strings and the mail settings.
+      </Step>
+      <Step title="Run">
+        Set `ISCO-API` as the startup project and press **F5** to run it on IIS Express.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Field app">
+    <Steps>
+      <Step title="Open the solution">
+        Open `qmd_weld_app_windows/Isco_UWPApp.sln` and restore NuGet packages.
+      </Step>
+      <Step title="Enable developer mode">
+        Turn on **Developer Mode** in Windows settings so you can deploy UWP apps locally.
+      </Step>
+      <Step title="Run">
+        Select your architecture and **Local Machine**, then press **F5**. Supporting tools (`Launcher`, `OmegaReading`, `UpdateRecords`, and `ISCO`) each have their own `.sln` in the repo.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+<Warning>
+  Keep real credentials out of Git. Make local changes to `Web.config` without committing them, and use `Web.Debug.config` and `Web.Release.config` transforms for environment-specific values.
+</Warning>

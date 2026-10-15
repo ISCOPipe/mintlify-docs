@@ -1,0 +1,59 @@
+---
+title: "Set up the Parrot orchestration API from GitHub"
+sidebarTitle: "Orchestration API"
+description: "Clone iscopipe/quote_builder_orchestration, install the Chalice apps, run the unit tests with faked AWS services, and deploy to dev or prod."
+---
+
+The Parrot orchestration repo (`iscopipe/quote_builder_orchestration`) holds two AWS Chalice apps that sit between the Pipeline UI and the worker.
+
+| App | Purpose |
+| --- | --- |
+| `orchestration-frontend-contract` | Public API used by the Pipeline UI: jobs, lines, dashboard, export, feedback, Kore lookups, and auth |
+| `orchestration-service-contract` | Internal API the worker calls back into with job results |
+
+## Set up
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/iscopipe/quote_builder_orchestration.git
+    cd quote_builder_orchestration/orchestration-frontend-contract
+    ```
+  </Step>
+  <Step title="Create a virtual environment and install dependencies">
+    ```bash
+    python3.12 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    ```
+  </Step>
+  <Step title="Run the tests">
+    ```bash
+    python -m unittest discover -s tests -v
+    ```
+
+    AWS services are fully faked in the tests, so no credentials are needed.
+  </Step>
+  <Step title="Repeat for the service contract">
+    Create a virtual environment and run `pip install -r requirements.txt` in `orchestration-service-contract/`. This app has no test suite yet.
+  </Step>
+</Steps>
+
+## Configuration
+
+Runtime configuration comes from SSM Parameter Store. Each stage sets `SSM_PARAMETER_PREFIX` in `.chalice/config.json`:
+
+| Stage | `SSM_PARAMETER_PREFIX` |
+| --- | --- |
+| `dev` | `/parrot/dev` |
+| `prod` | `/parrot` |
+
+Route blueprints live in `chalicelib/blueprints/` and shared constants in `chalicelib/constants.py`.
+
+## Deploy
+
+```bash
+chalice deploy --stage dev
+```
+
+The `scripts/` folder contains one-off backfill and migration scripts. Read each script before running it against a real environment.

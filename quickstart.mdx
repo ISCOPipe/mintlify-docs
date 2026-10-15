@@ -1,47 +1,64 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Clone ISCO projects from GitHub and get set up"
+sidebarTitle: "Quickstart"
+description: "Get access to the iscopipe GitHub organization, install the shared tools, and clone the Pipeline, Parrot, and QMD repositories to your machine."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+Every ISCO project lives in the `iscopipe` GitHub organization. This guide gets you from zero to a machine with all Pipeline, Parrot, and QMD repositories cloned, so you can move on to each project's setup guide.
 
 ## Prerequisites
 
-Before you begin, you must have:
+- A GitHub account added to the `iscopipe` organization (ask an org admin)
+- [Git](https://git-scm.com/downloads) and either SSH keys or the GitHub CLI configured for authentication
+- Credentials for the systems you will work with (SQL Server, AWS, Azure AD). Get these from your team lead; they are never stored in these docs.
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+## Clone the repositories
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
-
+  <Step title="Create a workspace folder">
     ```bash
-    npm install your-package
+    mkdir isco && cd isco
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+  <Step title="Clone the repositories you need">
+    <CodeGroup>
 
-    ```bash
-    your-cli init
+    ```bash Pipeline
+    git clone https://github.com/iscopipe/pipeline.git
     ```
+
+    ```bash Parrot
+    # The Parrot UI lives in the pipeline repo
+    git clone https://github.com/iscopipe/pipeline.git
+    git clone https://github.com/iscopipe/quote_builder_orchestration.git
+    git clone https://github.com/iscopipe/quote_builder_aws.git
+    ```
+
+    ```bash QMD
+    git clone https://github.com/iscopipe/qmd_weld_app_web.git
+    git clone https://github.com/iscopipe/qmd_weld_app_api.git
+    git clone https://github.com/iscopipe/qmd_weld_app_windows.git
+    ```
+
+    </CodeGroup>
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
-
-    ```bash
-    your-cli start
-    ```
+  <Step title="Follow the project setup guide">
+    - [Pipeline local setup](/pipeline/local-setup)
+    - [Parrot worker setup](/parrot/worker-setup) and [orchestration API setup](/parrot/orchestration-setup)
+    - [QMD setup](/qmd/setup)
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Install shared tooling
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+| Tool | Needed for |
+| --- | --- |
+| PHP 8.2+, Composer | Pipeline |
+| Node.js 20 and npm | Pipeline React build, Parrot UI |
+| Python 3.12 and [uv](https://docs.astral.sh/uv/) | Parrot worker and orchestration |
+| AWS CLI with ISCO credentials | Parrot (SSM, DynamoDB, S3, SQS) |
+| Visual Studio with ASP.NET and UWP workloads | QMD |
+
+<Warning>
+  Never commit credentials. Keep secrets in local `.env` files, AWS SSM, or untracked config, and confirm they are covered by `.gitignore` before you push.
+</Warning>

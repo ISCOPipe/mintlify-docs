@@ -1,0 +1,32 @@
+---
+title: "Pipeline: ISCO's internal intranet for every department"
+sidebarTitle: "Overview"
+description: "Learn what the Pipeline intranet does, how the PHP pages and React bundles fit together, and which databases and services it connects to."
+---
+
+Pipeline is ISCO's internal web application. It serves dashboards and tools for sales, operations, supply chain, production planning, finance, HR, quality, rental, and IT from a single PHP codebase in `iscopipe/pipeline`, with newer screens built in React.
+
+## Architecture
+
+- **PHP pages**: most screens are PHP files at the repo root and in department folders such as `sales/`, `ops/`, `finance/`, `hr/`, `quality/`, `supply_chain/`, and `warehouse/`.
+- **Shared includes**: `inc/` holds authentication (`auth.php`, `access_check.php`), role constants (`roles.php`), environment bootstrapping (`env.php`), and helpers.
+- **React bundles**: `react-src/` contains React 19 apps compiled by Vite into `dist/`. Entry points include `search`, `knowledge_mgt`, `event_log`, `vendor_quote_review`, `quote_builder` (Parrot), `dc_fab_queue`, `fab_dc_queue`, and `bin_label_print`.
+- **Data**: pages connect to SQL Server over ODBC (including the Prelude ERP database) and to MySQL. Connection files are loaded from outside the repo at `c:/xampp/inc/`.
+
+## Authentication and roles
+
+Every page that includes `inc/env.php` requires a signed-in session and redirects to `/login.php` otherwise. Access to individual tools is controlled by role IDs defined in `inc/roles.php`, for example `PARROT_TESTER` (67) and `PARROT_TEAM` (73).
+
+## Environments
+
+Pipeline uses a subdomain per branch. `env.php` reads the subdomain from the request host and builds URLs of the form `https://<subdomain>.isco-pipe.com`. See [Deployment](/pipeline/deployment) for how branches map to servers.
+
+<CardGroup cols={2}>
+  <Card title="Local setup" icon="laptop-code" href="/pipeline/local-setup">
+    Run Pipeline on your machine.
+  </Card>
+
+  <Card title="Deployment" icon="rocket" href="/pipeline/deployment">
+    How pushes reach the dev and prod servers.
+  </Card>
+</CardGroup>

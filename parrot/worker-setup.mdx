@@ -1,0 +1,75 @@
+---
+title: "Set up the Parrot quote builder worker from GitHub"
+sidebarTitle: "Worker Setup"
+description: "Clone iscopipe/quote_builder_aws, install Python 3.12 dependencies with uv, configure API keys and AWS access, and run the worker pipeline locally."
+---
+
+The Parrot worker (`iscopipe/quote_builder_aws`) is a Python 3.12 Chalice app that processes RFQ jobs from SQS. You can run the full matching pipeline locally against sample files before deploying.
+
+## Requirements
+
+- Python 3.12 or later
+- [uv](https://docs.astral.sh/uv/)
+- AWS credentials with read access to SSM parameters under `/parrot/dev/`
+- API keys for OpenRouter, Cohere, and Cloudflare Workers AI (get these from your team lead)
+
+## Set up
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/iscopipe/quote_builder_aws.git
+    cd quote_builder_aws
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    uv venv --python 3.12
+    uv sync
+    ```
+
+    Alternatively, run `./setup_test_gui.sh`, which installs uv if needed, creates `.venv`, installs dependencies, and launches the test GUI.
+  </Step>
+  <Step title="Create a .env file">
+    Create `.env` in the repo root. Local scripts load it automatically, and any missing values are pulled from SSM.
+
+    ```bash .env
+    OPENROUTER_API_KEY=
+    COHERE_API_KEY=
+    CLOUDFLARE_ACCOUNT_ID=
+    CLOUDFLARE_API_TOKEN=
+    # Optional
+    OPENROUTER_MODEL=google/gemini-3-flash-preview
+    QUOTE_BUILDER_LLM_DEBUG=1
+    ```
+  </Step>
+  <Step title="Run the pipeline locally">
+    ```bash
+    uv run python tests/test_pipeline_gui.py
+    ```
+
+    To simulate the full SQS-to-worker flow with a fake SQS record and stub DynamoDB client:
+
+    ```bash
+    uv run python tests/dry_run_worker.py
+    ```
+  </Step>
+</Steps>
+
+## Deploy
+
+The Chalice app lives in `quote_builder/`. Stages are defined in `quote_builder/.chalice/config.json`:
+
+| Stage | SSM prefix | Queue | Jobs table |
+| --- | --- | --- | --- |
+| `dev` | `/parrot/dev/` | `parrot-job-dispatch-dev` | `parrot-jobs-dev` |
+| `prod` | `/parrot/` | `parrot-job-dispatch` | `parrot-jobs` |
+
+```bash
+cd quote_builder
+chalice deploy --stage dev
+```
+
+<Warning>
+  Deploy to `dev` and verify a job end to end before deploying to `prod`.
+</Warning>

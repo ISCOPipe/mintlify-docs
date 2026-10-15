@@ -1,0 +1,30 @@
+---
+title: "QMD: weld management web portal, API, and field app"
+sidebarTitle: "Overview"
+description: "QMD is ISCO's weld management suite. Learn how the ASP.NET web portal, the Web API, and the Windows field app for fusion machines work together."
+---
+
+QMD is ISCO's weld management application. Field technicians record fusion joints (butt, miter, and saddle fusion) on a Windows app connected to fusion machine sensors, and project managers review joints, reports, and dashboards in a web portal.
+
+## Repositories
+
+| Repository | Contents | Stack |
+| --- | --- | --- |
+| `iscopipe/qmd_weld_app_web` | `ISCOWeb.sln`: the web portal, plus utility services in `Projects/` and a SQL index script in `Database/` | ASP.NET MVC, .NET Framework 4.6.1 |
+| `iscopipe/qmd_weld_app_api` | `ISCO-API.sln`: the Web API used by the field app, plus `ISCODeviceReadingService` and `ISCOEmailAlert` | ASP.NET Web API, .NET Framework 4.5.1 |
+| `iscopipe/qmd_weld_app_windows` | `Isco_UWPApp.sln`: the field app, plus `ISCO`, `Launcher`, `OmegaReading`, and `UpdateRecords` | UWP (Windows 10 SDK 10.0.22621, minimum 10.0.17763), .NET Framework |
+
+## How the pieces connect
+
+- **Field app** (`Isco_UWPApp`): walks the technician through job information, machine information, pipe parameters, heater measurements, and the fusion graph, then records the joint. `OmegaReading` reads sensor data from Omega devices.
+- **API** (`ISCO-API`): receives data from the field app and writes to the SQL Server weld database using Entity Framework.
+- **Web portal** (`ISCOWeb`): signs users in with Azure AD, and provides joint review, reports, PDF and Excel exports, and embedded AWS QuickSight dashboards.
+
+## Production URLs
+
+- Web portal: `https://weld.isco-pipe.com/`
+- API: `https://weld.isco-pipe.com/iscoapi/`
+
+<Card title="Set up QMD" icon="laptop-code" href="/qmd/setup">
+  Clone and build the QMD solutions in Visual Studio.
+</Card>

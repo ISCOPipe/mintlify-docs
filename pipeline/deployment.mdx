@@ -1,0 +1,48 @@
+---
+title: "How Pipeline branches deploy to dev and prod servers"
+sidebarTitle: "Deployment"
+description: "Understand Pipeline's branch-per-environment model, the GitHub Actions that deploy PHP and React builds over SSH, and the secrets they require."
+---
+
+Pipeline deploys automatically from GitHub Actions on a self-hosted runner. Each branch has its own docroot on a server, so pushing to a branch updates that environment.
+
+## Branches and servers
+
+| Branch | Server | Docroot folder |
+| --- | --- | --- |
+| `main` | Production | `pipeline` |
+| `test` | Production | `test` |
+| `bazooka`, `beachhead`, `roadblock`, `scarlett`, `shipwreck`, `wild_bill` | Development | Branch name |
+
+`main` deploys when a pull request into it is closed. The other branches deploy on every push.
+
+## Workflows
+
+<AccordionGroup>
+  <Accordion title="Deploy to Server (deploy.yaml)">
+    SSHes into the target server, runs `git fetch`, and runs `npm ci` only when `package-lock.json` changed or `node_modules` is missing. It then runs `git reset --hard` to the branch, which also handles force pushes.
+  </Accordion>
+
+  <Accordion title="Deploy React (compile_react.yaml)">
+    Runs when `react-src/`, `package.json`, `package-lock.json`, `vite.config.js`, or the workflow changes. It builds with Node 20 and `npx vite build`, packages `dist/`, copies it to the Windows server, and runs `deploy-react.ps1` to unpack it into `<DIR>/<docroot>/dist`.
+  </Accordion>
+
+  <Accordion title="Sync (sync.yaml)">
+    When a pull request into `main` is closed, runs `sync-branches.py` to sync the staging branches with `main`.
+  </Accordion>
+</AccordionGroup>
+
+## Required repository secrets
+
+Set these under **Settings > Secrets and variables > Actions** in `iscopipe/pipeline`:
+
+| Secret | Purpose |
+| --- | --- |
+| `DIR` | Parent folder of the docroots, with no trailing backslash (for example `X:\server\www`) |
+| `PROD_IP`, `DEV_IP` | Server addresses |
+| `HOST_PORT` | SSH port |
+| `SSH_USER`, `SSH_KEY` | SSH user and private key |
+
+<Tip>
+  To test a change safely, push it to one of the development branches first and verify it on that branch's subdomain before opening a pull request into `main`.
+</Tip>

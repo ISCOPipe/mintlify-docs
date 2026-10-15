@@ -1,0 +1,51 @@
+---
+title: "Parrot: AI quote builder that matches RFQs to product lines"
+sidebarTitle: "Overview"
+description: "Parrot turns customer RFQ documents into matched ISCO product lines. Learn how its Pipeline UI, orchestration API, and AWS worker fit together."
+---
+
+Parrot is ISCO's AI quote builder. Sales users upload a customer request for quote (PDF, spreadsheet, or email), and Parrot extracts the requested items, matches each one to ISCO catalog products, and returns lines that the team reviews and exports.
+
+## Components
+
+| Component | Repository | Role |
+| --- | --- | --- |
+| UI | `iscopipe/pipeline` | `sales/parrot.php`, `sales/parrot_job_upload.php`, `sales/parrot_management.php`, and the React app in `react-src/components/quote_builder` |
+| Orchestration API | `iscopipe/quote_builder_orchestration` | Chalice apps on AWS Lambda: a frontend contract for the UI and a service contract for worker callbacks |
+| Worker | `iscopipe/quote_builder_aws` | SQS-triggered Chalice Lambda (`quote-builder-worker`) that runs the matching pipeline |
+
+## How a job flows
+
+<Steps>
+  <Step title="Upload">
+    A user uploads an RFQ in Pipeline. The UI calls the orchestration frontend API, which stores the job and dispatches it to SQS.
+  </Step>
+  <Step title="Process">
+    The worker ingests the file (documents are converted to Markdown with Cloudflare Workers AI; `.eml`, `.msg`, and `.xlsx` are parsed directly), then extracts, structures, and cleans line items with LLMs through OpenRouter.
+  </Step>
+  <Step title="Match">
+    Each line goes through structured Elasticsearch search against the product catalog, Cohere reranking, LLM match selection, and validation.
+  </Step>
+  <Step title="Return">
+    The worker reports results to the orchestration service API, and users review, give feedback on, and export the matched lines in Pipeline.
+  </Step>
+</Steps>
+
+## AWS resources
+
+- **SSM Parameter Store**: configuration under `/parrot/` (prod) and `/parrot/dev/` (dev)
+- **SQS**: `parrot-job-dispatch` and `parrot-job-dispatch-dev`
+- **DynamoDB**: `parrot-jobs`, `parrot-jobs-v2`, and their `-dev` counterparts
+- **S3**: job file storage
+
+## Access
+
+Parrot pages in Pipeline require the `PARROT_TESTER` (67) or `PARROT_TEAM` (73) role, defined in `inc/roles.php`.
+
+## Contribution conventions
+
+From the worker repo's `AGENTS.md`:
+
+- Create an Azure DevOps work item in `ISCO-PIPE / Pipeline` titled `Parrot - <Area> - <description>`, parented to the right Feature.
+- Name branches `feat/<work-item-id>-<slug>`.
+- Use conventional commit messages.
