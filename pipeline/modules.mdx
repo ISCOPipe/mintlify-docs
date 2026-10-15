@@ -1,1 +1,408 @@
+---
+title: "Pipeline department modules and tools for ISCO developers"
+sidebarTitle: "Modules"
+description: "Browse the department modules inside Pipeline: sales, ops, finance, HR, quality, supply chain, warehouse, rental, production planning, and more."
+---
 
+Pipeline is organized into department modules under the repo root. Each module contains PHP pages, AJAX handlers, dashboards, and workflow tools specific to that business unit. This guide maps the folders to what they do and highlights the most important entry points.
+
+## Revenue and customer-facing modules
+
+<AccordionGroup>
+  <Accordion title="Sales (sales/)">
+    The sales module is the largest department folder. It handles quotes, orders, opportunities, invoices, customer history, and territory management.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `index.php` | Sales module landing page |
+    | `sales_dashboard.php` | Main sales dashboard |
+    | `sales_status.php` | Sales status overview |
+    | `opportunity/` | Opportunity management subfolder |
+    | `quotes/` | Quote management subfolder |
+    | `orders/` | Order management subfolder |
+    | `leads/` | Lead tracking subfolder |
+    | `sales_contact_import.php` | Bulk contact import tool |
+    | `sales_customer_history.php` | Customer sales history viewer |
+    | `sales_invoice.php` | Invoice detail and history |
+    | `sales_manage_team.php` | Team and territory assignment |
+    | `sales_manage_goal.php` | Sales goal management |
+    | `sales_tsm_dashboard.php` | Territory sales manager dashboard |
+    | `parrot.php` | Parrot integration entry point |
+    | `parrot_job_upload.php` | Parrot job upload handler |
+    | `location/` | Location-based sales tools |
+    | `map.php` | Sales activity map |
+    | `stack/` | Stack performance tracking |
+
+    The `ajax/` subfolder contains endpoints for charts and real-time data used by the dashboards.
+  </Accordion>
+
+  <Accordion title="Rental (rental/)">
+    Manages the rental fleet, equipment check-in/check-out, revenue tracking, and repair workflows.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `rental.php` | Rental module landing page |
+    | `rental_dashboard.php` | Main rental dashboard |
+    | `rental_orders.php` | Rental order management |
+    | `rental_quotes.php` | Rental quote management |
+    | `rental_machines.php` | Equipment catalog and availability |
+    | `check_in_out_form.php` | Equipment check-in/check-out form |
+    | `check_in_out_form_complete.php` | Check-in/check-out completion handler |
+    | `equipment_ops_dashboard.php` | Equipment operations overview |
+    | `rental_revenue_detail.php` | Revenue breakdown by machine/region |
+    | `rental_equipment_locations.php` | Fleet location tracking |
+    | `openorders_by_market.php` | Open rental orders by market |
+    | `mcelroy_rma.php` | McElroy RMA processing |
+    | `swap_log/` | Equipment swap history |
+    | `ops/` | Rental operations subfolder |
+    | `committee/` | Rental committee tools |
+
+    The `js/` subfolder contains rental-specific client-side scripts.
+  </Accordion>
+
+  <Accordion title="Operations (ops/)">
+    Covers shop floor operations, barcode scanning, and inventory movement.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `index.php` | Operations landing page |
+    | `barcode_reader.php` | Barcode scanning interface |
+    | `barcode_test.php` | Barcode testing utility |
+    | `inventory/` | Inventory management subfolder |
+  </Accordion>
+
+  <Accordion title="Pipe Supply (pipe/)">
+    Pipe-specific vendor dashboards and opportunity tracking.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `pipe_dashboard.php` | Pipe supply dashboard |
+    | `pipe_opportunities.php` | Pipe opportunity tracking |
+    | `pipe_vendor_dashboard.php` | Vendor performance dashboard |
+    | `pipe_vendor_activities.php` | Vendor activity log |
+    | `pipe_activity_detail.php` | Activity detail view |
+  </Accordion>
+</AccordionGroup>
+
+## Financial and administrative modules
+
+<AccordionGroup>
+  <Accordion title="Finance (finance/)">
+    Financial reporting, commission tracking, and payment processing.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `finance_dashboard.php` | Finance overview dashboard |
+    | `commission_report.php` | Sales commission report |
+    | `commission_report_detail.php` | Commission detail by rep |
+    | `bpn_customer_list.php` | BPN customer management |
+    | `bpn_customer_manage.php` | BPN customer edit interface |
+    | `bill_trust_report.php` | BillTrust reconciliation |
+    | `stripe.php` | Stripe payment integration |
+    | `sales_charts.php` | Sales financial charts |
+    | `gp_charts.php` | Gross profit charts |
+    | `goals.php` | Financial goal tracking |
+    | `api/` | Finance API endpoints |
+  </Accordion>
+
+  <Accordion title="Accounting (accounting/)">
+    Accounts payable, credit requests, and invoice workflows.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `credit_request_form.php` | Credit request submission |
+    | `credit_request_report.php` | Credit request status report |
+    | `credit_request_approval_rules.php` | Approval rule configuration |
+    | `ap_discrepancy_form.php` | AP discrepancy reporting |
+    | `ap_discrepancy_report.php` | AP discrepancy status |
+    | `invoice_detail.php` | Invoice detail view |
+    | `cr_general_workflow.php` | General credit workflow |
+    | `cr_rental_workflow.php` | Rental credit workflow |
+    | `cr_tax_workflow.php` | Tax credit workflow |
+  </Accordion>
+
+  <Accordion title="HR (hr/)">
+    Employee directory, activity logging, and profile management.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `hr_dashboard.php` | HR overview dashboard |
+    | `hr_employee_detail.php` | Employee detail page |
+    | `hr_employee_lookup.php` | Employee search |
+    | `hr_employee_status_detail.php` | Employee status tracking |
+    | `hr_profile_pic_upload.php` | Profile picture upload |
+    | `hr_profile_pics_missing.php` | Missing photo report |
+    | `employee_directory.php` | Company directory |
+    | `log_activity.php` | Activity logging interface |
+    | `hr_auth.php` | HR authentication handler |
+  </Accordion>
+</AccordionGroup>
+
+## Supply chain and manufacturing modules
+
+<AccordionGroup>
+  <Accordion title="Supply Chain (supply_chain/)">
+    Vendor management, purchase orders, OTD tracking, and spend analysis.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `scp_dashboard.php` | Supply chain main dashboard |
+    | `scp_mspat.php` | MSPAT product management |
+    | `scp_po.php` | Purchase order overview |
+    | `scp_po_detail.php` | PO detail view |
+    | `scp_vendor_search.php` | Vendor lookup |
+    | `scp_vendor_detail.php` | Vendor detail page |
+    | `scp_vendor_spend.php` | Vendor spend analysis |
+    | `scp_vendor_comparison.php` | Vendor comparison charts |
+    | `scp_otd_detail.php` | On-time delivery detail |
+    | `scp_stockouts.php` | Stockout tracking |
+    | `po_at_risk.php` | At-risk purchase orders |
+    | `po_cost_trends.php` | PO cost trend analysis |
+    | `rpt_on_the_water.php` | In-transit inventory report |
+    | `mspat_product_form.php` | MSPAT product form |
+    | `mspat_product_add.php` | Add MSPAT product |
+    | `mspat_product_update.php` | Update MSPAT product |
+  </Accordion>
+
+  <Accordion title="Production Planning (production_planning/)">
+    Work order scheduling, capacity planning, and fabrication metrics.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `production_planning_dashboard.php` | Main planning dashboard |
+    | `pp_schedule_calendar.php` | Work order scheduling calendar |
+    | `pp_schedule_job.php` | Schedule a job |
+    | `pp_schedule_job_manage.php` | Manage scheduled jobs |
+    | `pp_planner_dashboard.php` | Planner view |
+    | `pp_planner_manager_dashboard.php` | Manager planning view |
+    | `pp_rev_and_gm.php` | Revenue and gross margin report |
+    | `pp_msfat_master.php` | MSFAT master data |
+    | `pp_spool_inventory.php` | Spool inventory tracking |
+    | `pp_stockout.php` | Production stockout report |
+    | `open_work_orders.php` | Open WO list |
+    | `on_time_wo_report.php` | On-time work order report |
+    | `weekly_hours_report.php` | Weekly hours by department |
+    | `mar_burdens.php` | Burden rate analysis |
+    | `mar_completed_efficiency.php` | Efficiency reporting |
+    | `manage_operator_form.php` | Operator management |
+    | `manage_planner_form.php` | Planner management |
+    | `inc/` | Planning-specific includes |
+  </Accordion>
+
+  <Accordion title="Warehouse (warehouse/)">
+    DC queue management and picker statistics.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `dc_fab_queue.php` | DC to fabrication queue |
+    | `fab_dc_queue.php` | Fabrication to DC queue |
+    | `picker_stats_role_override.php` | Picker stats override |
+    | `_right.php` | Warehouse sidebar panel |
+  </Accordion>
+
+  <Accordion title="Scoreboard (scoreboard/)">
+    Fabrication scoreboards and labor adjustment workflows.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `fab_scoreboard.php` | Fabrication scoreboard |
+    | `fab_utilization_by_user.php` | Utilization by operator |
+    | `fab_estimate_vs_actual.php` | Estimate vs actual hours |
+    | `fab_hours_billed_detail.php` | Billed hours detail |
+    | `fab_ontime_wo_detail.php` | On-time WO detail |
+    | `fab_adjustment_form.php` | Labor adjustment form |
+    | `fab_adjustment_approval_rules.php` | Adjustment approval rules |
+    | `ops_scoreboard.php` | Operations scoreboard |
+    | `ops_ontime_shipment_detail.php` | On-time shipment detail |
+    | `wo_completion_by_user.php` | WO completion by operator |
+  </Accordion>
+
+  <Accordion title="Shipping (shipping/)">
+    Pick tickets and transfer management.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `pick_next_by_type.php` | Pick ticket assignment |
+    | `shippings_by_warehouse.php` | Shipments by warehouse |
+    | `transfer_detail.php` | Transfer detail view |
+    | `photos/` | Shipping photos storage |
+  </Accordion>
+
+  <Accordion title="Distribution (distribution/)">
+    Barcode and QC label generation.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `barcode.php` | Barcode label generator |
+    | `qc_label.php` | QC label generator |
+  </Accordion>
+</AccordionGroup>
+
+## Quality and compliance modules
+
+<AccordionGroup>
+  <Accordion title="NCR (ncr/)">
+    Non-conformance reporting with forms, tasks, and PDF exports.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `ncr_dashboard_user.php` | User NCR dashboard |
+    | `ncr_dashboard_operation.php` | Operations NCR dashboard |
+    | `ncr_dashboard_superuser.php` | Superuser NCR dashboard |
+    | `ncr_dashboard_editor.php` | NCR editor dashboard |
+    | `ncr_form.php` | NCR submission form |
+    | `ncr_form2.php` | Alternate NCR form |
+    | `ncr_detail.php` | NCR detail view |
+    | `ncr_detail_pdf.php` | PDF export |
+    | `ncr_closure.php` | NCR closure workflow |
+    | `ncr_tasks_list.php` | NCR task management |
+    | `ncr_report.php` | NCR status report |
+    | `correction_form_submit.php` | Correction form submission |
+    | `vendor_package.php` | Vendor package management |
+    | `vendor_package_email.php` | Vendor email notifications |
+    | `inc/` | NCR-specific includes |
+  </Accordion>
+
+  <Accordion title="Quality (quality/)">
+    Scrap requests and product quality tracking.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `scrap_request_form.php` | Scrap request submission |
+    | `scrap_request_report.php` | Scrap request status |
+    | `scrap_request_approval_rules.php` | Scrap approval rules |
+    | `scrap_request_reject_cancel_rules.php` | Reject/cancel rules |
+    | `scrap_request/` | Scrap request subfolder |
+    | `js/` | Quality module scripts |
+  </Accordion>
+</AccordionGroup>
+
+## Cross-functional and support modules
+
+<AccordionGroup>
+  <Accordion title="Task and Workflow Engine (task/)">
+    Shared workflow system used by multiple departments for approvals and routing.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `event_log.php` | Workflow event logging |
+    | `wf_credit_request.php` | Credit request workflow |
+    | `wf_contract_review.php` | Contract review workflow |
+    | `wf_fab_adjustment.php` | Fabrication adjustment workflow |
+    | `wf_ncr_closure.php` | NCR closure workflow |
+    | `wf_ncr_closure_remediation.php` | NCR remediation workflow |
+    | `wf_procurement_request.php` | Procurement request workflow |
+    | `wf_ap_discrepancy.php` | AP discrepancy workflow |
+    | `wf_stay_interview.php` | Stay interview workflow |
+    | `attachments.php` | Workflow attachments |
+    | `association_data.php` | Association data management |
+    | `helper/` | Workflow helper scripts |
+    | `scripts/` | Workflow automation scripts |
+    | `update/` | Workflow update handlers |
+    | `policies/` | Workflow policy definitions |
+  </Accordion>
+
+  <Accordion title="Executive (executive/)">
+    Consolidated dashboards for leadership across all departments.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `executive.php` | Main executive dashboard |
+    | `executive2.php` | Alternate executive view |
+    | `sales_executive.php` | Sales executive summary |
+    | `operations_executive.php` | Operations executive summary |
+    | `operations_fab_fitting.php` | Fabrication/fitting overview |
+    | `operations_pp.php` | Production planning overview |
+    | `operations_rental.php` | Rental executive summary |
+    | `hr_executive.php` | HR executive summary |
+    | `inventory.php` | Inventory executive view |
+    | `goals.php` | Company goal tracking |
+    | `slob_report.php` | Slow-moving inventory report |
+  </Accordion>
+
+  <Accordion title="Marketing (marketing/)">
+    Tradeshow management and marketing asset tracking.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `marketing_dashboard.php` | Marketing overview |
+    | `trade_show_request.php` | Tradeshow request form |
+    | `trade_show_request_list.php` | Tradeshow request list |
+    | `trade_show_request_detail.php` | Tradeshow detail view |
+    | `trade_show_and_booth_request.php` | Booth request form |
+    | `trade_show_material_form.php` | Material request form |
+    | `trade_show_material_upload.php` | Material upload handler |
+    | `trade_show_assets.php` | Asset catalog |
+    | `manage_tradeshow.php` | Tradeshow management |
+    | `post_trade_show_activity.php` | Post-show follow-up |
+    | `files/` | Marketing file storage |
+    | `inc/` | Marketing includes |
+  </Accordion>
+
+  <Accordion title="Product (product/)">
+    Product data, BOMs, and supplier quote tracking.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `customer_detail.php` | Product customer detail |
+    | `vendor_detail.php` | Product vendor detail |
+    | `sales_detail.php` | Product sales detail |
+    | `quote_detail.php` | Product quote detail |
+    | `po_detail.php` | Product PO detail |
+    | `WO_detail.php` | Product work order detail |
+    | `ajax_BOM_detail.php` | BOM detail AJAX endpoint |
+    | `ajax_quote_conversion.php` | Quote conversion tracking |
+    | `ajax_top_customers.php` | Top customers by product |
+    | `ajax_top_vendors.php` | Top vendors by product |
+  </Accordion>
+
+  <Accordion title="Pricing (pricing/)">
+    Price team tools and override management.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `dashboard.php` | Pricing dashboard |
+    | `price_team_dashboard.php` | Price team overview |
+    | `override.php` | Price override tool |
+    | `js/` | Pricing scripts |
+  </Accordion>
+
+  <Accordion title="Legal (legal/)">
+    Legal opportunity tracking and form submission.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `legal_opportunity_dashboard.php` | Legal opportunity overview |
+    | `legal_opportunity_form.php` | Legal opportunity form |
+    | `legal_form_submit.php` | Form submission handler |
+  </Accordion>
+
+  <Accordion title="IT (it/)">
+    IT administration tools.
+
+    | Notable pages | Purpose |
+    | --- | --- |
+    | `disable_user_account.php` | User account disable tool |
+    | `_right_it.php` | IT sidebar panel |
+  </Accordion>
+</AccordionGroup>
+
+## Shared infrastructure
+
+Some folders serve the entire application rather than a single department:
+
+| Folder | Role |
+| --- | --- |
+| `inc/` | Shared PHP includes: authentication, roles, search helpers, Oracle/Canto/ShareFile functions |
+| `Classes/` | Reusable PHP classes for document handling, barcodes, and RSS |
+| `js/` | Global client-side scripts: search, datatables, camera, address validation |
+| `css/` | Global stylesheets including `isco.css` and theme CSS |
+| `left/` | Sidebar menu builder with role-based permissions |
+| `task/` | Cross-department workflow engine |
+| `reports/` | Cross-department reporting tools |
+| `react-src/` | Modern React screens embedded in PHP hosts |
+| `ext/` | Third-party JS libraries (mentions input, dompdf, lottie) |
+
+<Note>
+  When adding a new department page, place it in the appropriate module folder and register it in the sidebar via `left/` if it needs navigation. For React screens, add the entry point to `vite.config.js` and host it from a PHP page in the relevant module folder.
+</Note>
