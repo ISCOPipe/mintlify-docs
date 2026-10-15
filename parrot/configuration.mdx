@@ -1,35 +1,20 @@
 ---
-title: "Parrot worker configuration reference"
+title: "Parrot Worker Configuration Reference"
 sidebarTitle: "Configuration"
-description: "Complete reference for Parrot worker environment variables, Chalice stage config, SSM parameters, IAM policies, and AWS resources."
+description: "Complete configuration reference for the Parrot quote-builder-worker Lambda: Chalice stages, SSM parameter map, environment variables, feature flags, IAM policies, and AWS resources."
 ---
 
-The Parrot worker is configured through a stack of layers: `.chalice/config.json` per-stage defaults, AWS SSM Parameter Store secrets, and local `.env` overrides. This page documents every tunable.
+The Parrot worker is an AWS Chalice application (`quote-builder-worker`) that runs as an SQS-triggered Lambda. Configuration flows from SSM Parameter Store at cold start, with environment variable fallbacks for local development.
 
 <Warning>
-  The repository contains committed secrets (API keys, AWS credentials, connection strings). Never copy secret values into the docs or commit them. Use a local `.env` file and the team's secret store for real values.
+  This repo contains committed secrets (API keys, DB passwords, tokens). Never commit live values. Use SSM SecureString parameters or local `.env` files. Document setting names only.
 </Warning>
 
-## Chalice stage configuration
+## Chalice Stage Configuration
 
-`quote_builder/.chalice/config.json` defines two stages: `dev` and `prod`.
+The `.chalice/config.json` defines two stages: `dev` and `prod`.
 
-| Field | Dev | Prod |
-| --- | --- | --- |
-| `api_gateway_stage` | `v1` | `v1` |
-| `automatic_layer` | `true` | `true` |
-| `autogen_policy` | `false` | `false` |
-| `iam_policy_file` | `policy-dev.json` | `policy-prod.json` |
-| `security_group_ids` | `sg-0b3faeef88c27c746` | `sg-0b3faeef88c27c746` |
-| `subnet_ids` | `subnet-0d37f2507aacfe8a6` | `subnet-0d37f2507aacfe8a6` |
-| `lambda_timeout` | `900` | `900` |
-| `lambda_memory_size` | `512` | `512` |
-| `tags.project` | `parrot` | `parrot` |
-| `tags.env` | `dev` | `prod` |
-
-### Per-stage environment variables
-
-| Variable | Dev | Prod |
+| Setting | Dev | Prod |
 | --- | --- | --- |
 | `SSM_PREFIX` | `/parrot/dev/` | `/parrot/` |
 | `PARROT_API_VERSION` | `v2` | `v2` |
@@ -37,113 +22,359 @@ The Parrot worker is configured through a stack of layers: `.chalice/config.json
 | `JOBS_TABLE_V2` | `parrot-jobs-dev-v2` | `parrot-jobs-v2` |
 | `DISPATCH_QUEUE` | `parrot-job-dispatch-dev` | `parrot-job-dispatch` |
 | `OPENROUTER_MODEL` | `google/gemini-3-flash-preview` | `google/gemini-3-flash-preview` |
-| `PART_LOOKUP_URL` | `https://pathfinder.isco-pipe.com:4443/api/v1/product_lookup/search` | `https://pathfinder.isco-pipe.com:4443/api/v1/product_lookup/search` |
+| `PART_LOOKUP_URL` | `https://pathfinder.isco-pipe.com:4443/api/v1/product_lookup/search` | same |
 | `QUOTE_BUILDER_IMAGE_INGEST` | `1` | `1` |
 | `LOG_LEVEL` | `DEBUG` | `INFO` |
-| `JOBS_BUCKET` | `""` | `""` |
-| `ORCHESTRATION_API_URL` | `""` | `""` |
-| `OPENROUTER_API_KEY` | `""` | `""` |
+| `lambda_timeout` | `900` | `900` |
+| `lambda_memory_size` | `512` | `512` |
+| `JOBS_BUCKET` | `""` (empty) | `""` (empty) |
+| `ORCHESTRATION_API_URL` | `""` (empty) | `""` (empty) |
+| `OPENROUTER_API_KEY` | `""` (empty) | `""` (empty) |
+| `automatic_layer` | `true` | `true` |
+| `api_gateway_stage` | `v1` | `v1` |
+| `autogen_policy` | `false` | `false` |
+| `iam_policy_file` | `policy-dev.json` | `policy-prod.json` |
+| `security_group_ids` | `sg-0b3faeef88c27c746` | `sg-0b3faeef88c27c746` |
+| `subnet_ids` | `subnet-0d37f2507aacfe8a6` | `subnet-0d37f2507aacfe8a6` |
+| `tags.project` | `parrot` | `parrot` |
+| `tags.env` | `dev` | `prod` |
 
-Empty string values for secrets and the orchestration URL are backfilled from SSM at cold start by `SSMConfig.inject_env_vars()`.
+**File:** `quote_builder/.chalice/config.json`
 
-## SSM parameter names
+### Empty-by-default Values
 
-`chalicelib/aws/ssm_config.py` defines the parameter map. Stage-scoped keys are read from the stage prefix (e.g. `/parrot/dev/`); all others are read from the base `/parrot/` path.
+These keys are set to `""` in `config.json` because their real values come from SSM at cold start:
 
-| SSM key | Env fallback | Default | Scope |
+| Key | SSM Source | Purpose |
+| --- | --- | --- |
+| `JOBS_BUCKET` | `/parrot/{stage}/uploads-bucket` | S3 bucket for job inputs/results |
+| `ORCHESTRATION_API_URL` | `/parrot/{stage}/orchestration-api-url` | Base URL for O->S callbacks |
+| `OPENROUTER_API_KEY` | `/parrot/openrouter-api-key` | LLM API key |
+
+When `ORCHESTRATION_API_URL` is empty, the worker runs in **dev mode** and writes directly to DynamoDB instead of sending HTTP callbacks.
+
+---
+
+## SSM Parameter Map
+
+At cold start, `SSMConfig` (`chalicelib/aws/ssm_config.py`) loads parameters from AWS Systems Manager Parameter Store. Stage-scoped keys are read from the stage prefix (e.g. `/parrot/dev/`); shared keys are read from the base prefix (`/parrot/`).
+
+### Stage-Scoped Keys
+
+These vary by deployment stage:
+
+| SSM Key (under prefix) | Env Var Fallback | Default | Description |
 | --- | --- | --- | --- |
-| `api-version` | `PARROT_API_VERSION` | `""` | Stage |
-| `jobs-table` | `JOBS_TABLE` | `parrot-jobs` | Stage |
-| `jobs-table-v2` | `JOBS_TABLE_V2` | `""` | Stage |
-| `uploads-bucket` | `JOBS_BUCKET` | `""` | Stage |
-| `dispatch-queue-url` | `DISPATCH_QUEUE_URL` | `""` | Stage |
-| `dispatch-queue-name` | `DISPATCH_QUEUE` | `parrot-job-dispatch` | Stage |
-| `orchestration-api-url` | `ORCHESTRATION_API_URL` | `""` | Stage |
-| `orchestration_service_contract/api_key` | `ORCHESTRATION_API_KEY` | `""` | Stage |
-| `openrouter-api-key` | `OPENROUTER_API_KEY` | `""` | Base |
-| `openrouter-model` | `OPENROUTER_MODEL` | `google/gemini-3-flash-preview` | Base |
-| `cloudflare-account-id` | `CLOUDFLARE_ACCOUNT_ID` | `""` | Base |
-| `cloudflare-api-token` | `CLOUDFLARE_API_TOKEN` | `""` | Base |
-| `llama-parse-key` | `LLAMA_PARSE_API_KEY` | `""` | Stage |
-| `part-lookup-url` | `PART_LOOKUP_URL` | `""` | Base |
-| `es/api_key` | `ES_API_KEY` | `""` | Base |
-| `es/api_url` | `ES_URL` | `""` | Base |
-| `es/index` | `ES_INDEX` | `catsy_data_scheduled_jobs` | Base |
-| `kore-user` | `KORE_USER` | `""` | Base |
-| `kore-pass` | `KORE_PASS` | `""` | Base |
-| `log-level` | `LOG_LEVEL` | `INFO` | Base |
+| `api-version` | `PARROT_API_VERSION` | `""` | API version (`v1` or `v2`) |
+| `jobs-table` | `JOBS_TABLE` | `parrot-jobs` | DynamoDB table for job records |
+| `jobs-table-v2` | `JOBS_TABLE_V2` | `""` | V2 schema table (required when `api-version=v2`) |
+| `uploads-bucket` | `JOBS_BUCKET` | `""` | S3 bucket for file uploads and result JSON |
+| `dispatch-queue-url` | `DISPATCH_QUEUE_URL` | `""` | Full SQS queue URL |
+| `dispatch-queue-name` | `DISPATCH_QUEUE` | `parrot-job-dispatch` | SQS queue name |
+| `orchestration-api-url` | `ORCHESTRATION_API_URL` | `""` | Orchestration API base URL |
+| `orchestration_service_contract/api_key` | `ORCHESTRATION_API_KEY` | `""` | Internal API key for O->S auth |
+| `llama-parse-key` | `LLAMA_PARSE_API_KEY` | `""` | LlamaParse API key |
 
-## Feature flags and debug switches
+### Shared Keys (Base Prefix)
 
-| Variable | Source | Effect |
+These are shared across all stages:
+
+| SSM Key (under `/parrot/`) | Env Var Fallback | Default | Description |
+| --- | --- | --- | --- |
+| `openrouter-api-key` | `OPENROUTER_API_KEY` | `""` | OpenRouter LLM API key |
+| `openrouter-model` | `OPENROUTER_MODEL` | `google/gemini-3-flash-preview` | Default LLM model |
+| `cloudflare-account-id` | `CLOUDFLARE_ACCOUNT_ID` | `""` | Cloudflare Workers AI account |
+| `cloudflare-api-token` | `CLOUDFLARE_API_TOKEN` | `""` | Cloudflare API token (Workers AI scope) |
+| `llama-parse-key` | `LLAMA_PARSE_API_KEY` | `""` | LlamaParse API key (also stage-scoped) |
+| `part-lookup-url` | `PART_LOOKUP_URL` | `""` | Pathfinder product search endpoint |
+| `es/api_key` | `ES_API_KEY` | `""` | Elasticsearch API key |
+| `es/api_url` | `ES_URL` | `https://10.1.0.37:9200` | Elasticsearch base URL |
+| `es/index` | `ES_INDEX` | `catsy_data_scheduled_jobs` | ES index for catalog search |
+| `kore-user` | `KORE_USER` | `""` | KORE integration username |
+| `kore-pass` | `KORE_PASS` | `""` | KORE integration password |
+| `log-level` | `LOG_LEVEL` | `INFO` | Root logger level |
+
+**File:** `chalicelib/aws/ssm_config.py`
+
+### Resolution Order
+
+SSMConfig resolves each key in this priority:
+
+1. SSM Parameter Store value (cached at cold start)
+2. Environment variable (from `config.json` or local `.env`)
+3. Coded default (from `_PARAM_MAP`)
+
+After loading, `cfg.inject_env_vars()` pushes resolved SSM values back into `os.environ` so downstream code that reads env vars directly (e.g. `OpenRouterClient`) gets the SSM value.
+
+---
+
+## Local Environment Variables
+
+For local development and testing, these env vars override or supplement SSM:
+
+| Variable | Purpose | Example |
 | --- | --- | --- |
-| `QUOTE_BUILDER_IMAGE_INGEST` | `config.json` / `.env` | Master switch for image ingestion (#9024). `1` enables PNG/JPG/JPEG/WebP transcription via vision OCR. `0` (default when absent) excludes image attachments entirely. |
-| `QUOTE_BUILDER_LLM_DEBUG` | `.env` | When set to `1`, enables verbose LLM request/response logging in the pipeline. |
-| `QUOTE_BUILDER_ATTACHMENT_CONCURRENCY` | `.env` | Max concurrent email attachments processed. Default `4`. |
-| `QUOTE_BUILDER_MIN_CONFIDENCE` | `.env` | Shared confidence threshold used by junk filter and validation. Default `0.5`. |
+| `SSM_PREFIX` | SSM path prefix | `/parrot/dev/` or `/parrot/` |
+| `PARROT_API_VERSION` | API schema version | `v2` |
+| `JOBS_TABLE` | DynamoDB table name | `parrot-jobs-dev` |
+| `JOBS_TABLE_V2` | V2 table name | `parrot-jobs-dev-v2` |
+| `JOBS_BUCKET` | S3 bucket for uploads | `parrot-uploads-dev-201014308786` |
+| `DISPATCH_QUEUE` | SQS queue name | `parrot-job-dispatch-dev` |
+| `DISPATCH_QUEUE_URL` | Full SQS queue URL | `https://sqs.us-east-2.amazonaws.com/...` |
+| `ORCHESTRATION_API_URL` | Orchestration API base | `https://xxxx.execute-api.us-east-2.amazonaws.com/v1` |
+| `ORCHESTRATION_API_KEY` | Internal API Bearer token | (from secret store) |
+| `OPENROUTER_API_KEY` | OpenRouter API key | (from secret store) |
+| `OPENROUTER_MODEL` | LLM model identifier | `google/gemini-3-flash-preview` |
+| `OPENROUTER_BASE_URL` | OpenRouter endpoint | `https://openrouter.ai/api/v1` |
+| `OPENROUTER_HTTP_REFERER` | Optional HTTP referer header | `https://isco-pipe.com` |
+| `OPENROUTER_X_TITLE` | Optional X-Title header | `Parrot Worker` |
+| `OPENROUTER_REASONING_EFFORT` | Reasoning effort (gpt-oss) | `low` |
+| `OPENROUTER_MAX_IN_FLIGHT_PER_JOB` | Max concurrent LLM calls per job | `100` |
+| `COHERE_API_KEY` | Cohere rerank API key | (from secret store) |
+| `COHERE_RERANK_MODEL` | Cohere model | `rerank-v3.5` |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID | (from secret store) |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API token | (from secret store) |
+| `LLAMA_PARSE_API_KEY` | LlamaParse API key | (from secret store) |
+| `LLAMA_CLOUD_API_KEY` | LlamaParse alternate key | (from secret store) |
+| `LLAMA_PARSE_TIER` | Parsing tier | `agentic` |
+| `LLAMA_PARSE_VERSION` | Parsing version | `latest` |
+| `ES_URL` | Elasticsearch URL | `https://10.1.0.37:9200` |
+| `ES_API_KEY` | Elasticsearch API key | (from secret store) |
+| `ES_INDEX` | ES catalog index | `catsy_data_scheduled_jobs` |
+| `PART_LOOKUP_URL` | Pathfinder search endpoint | `https://pathfinder.isco-pipe.com:4443/api/v1/product_lookup/search` |
+| `KORE_USER` | KORE username | (from secret store) |
+| `KORE_PASS` | KORE password | (from secret store) |
+| `LOG_LEVEL` | Logging level | `DEBUG`, `INFO`, `WARNING` |
 
-## LLM token budgets
+---
 
-`chalicelib/pipeline/config.py` defines per-step `max_tokens` budgets. Override order:
+## Feature Flags and Debug Switches
 
-1. `QUOTE_BUILDER_MAX_TOKENS_<MODEL_FAMILY>_<STEP>`
-2. `QUOTE_BUILDER_MAX_TOKENS_<STEP>`
-3. `MODEL_LLM_MAX_TOKEN_OVERRIDES[model_family][step]`
-4. `LLM_MAX_TOKENS[step]`
+| Variable | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `QUOTE_BUILDER_IMAGE_INGEST` | `0` or `1` | `0` | Enable image attachment ingestion and vision OCR |
+| `QUOTE_BUILDER_ATTACHMENT_CONCURRENCY` | integer | `4` | Max concurrent embedded attachment processors |
+| `QUOTE_BUILDER_FILTER_BATCH_SIZE` | integer | `5` | Lines per LLM filter batch |
+| `QUOTE_BUILDER_JUNK_BATCH_SIZE` | integer | same as filter batch | Lines per junk-filter batch |
+| `QUOTE_BUILDER_MIN_CONFIDENCE` | float | `0.5` | Confidence threshold for junk filter and validation |
+| `QUOTE_BUILDER_LOW_CONF_THRESH` | float | `0.5` | Alias for min confidence |
+| `QUOTE_BUILDER_LOW_CONFIDENCE_THRESHOLD` | float | `0.5` | Alias for min confidence |
+| `QUOTE_BUILDER_LLM_DEBUG` | `0` or `1` | `0` | Enable verbose LLM debug logging |
+| `LLM_FILTER_CONCURRENCY` | integer | `10` | Thread pool workers for LLM filter |
+| `JUNK_FILTER_CONCURRENCY` | integer | `10` | Thread pool workers for junk filter |
+| `RERANK_CONCURRENCY` | integer | `4` | Thread pool workers for Cohere rerank |
+| `RERANK_RPS` | float | `15.0` | Cohere API rate limit (requests/sec) |
+| `PART_MATCH_CONCURRENCY` | integer | `8` | Thread pool workers for catalog search |
+| `QUOTE_BUILDER_LLM_MAX_IN_FLIGHT` | integer | `100` | Max concurrent OpenRouter calls per job |
+| `QUOTE_BUILDER_MAX_TOKEN_RETRY_MULTIPLIER` | integer | `2` | Token budget multiplier on length retry |
+| `QUOTE_BUILDER_MAX_TOKEN_RETRY_MULTIPLIER_<FAMILY>` | integer | `2` | Per-model-family token retry multiplier |
 
-Example defaults:
+**Per-step token overrides:**
 
-| Step | Default tokens |
+Any step's `max_tokens` can be overridden via env vars:
+
+| Pattern | Example |
 | --- | --- |
-| `description_cleanup` | `4000` |
-| `document_classify` | `50` |
-| `match_select` | `1536` |
-| `structured_search_specs` | `12000` |
-| `translate` | `4000` |
-| `wall_split` | `4000` |
+| `QUOTE_BUILDER_MAX_TOKENS_<STEP>` | `QUOTE_BUILDER_MAX_TOKENS_DESCRIPTION_CLEANUP=8000` |
+| `QUOTE_BUILDER_MAX_TOKENS_<FAMILY>_<STEP>` | `QUOTE_BUILDER_MAX_TOKENS_GPT_OSS_DESCRIPTION_CLEANUP=8000` |
 
-Retry growth is controlled by `QUOTE_BUILDER_MAX_TOKEN_RETRY_MULTIPLIER` (default `2`).
+Valid step names (from `chalicelib/pipeline/config.py`): `description_cleanup`, `document_classify`, `document_classify_confirm`, `global_notes`, `junk_filter`, `language_detect`, `line_structurer_consolidation`, `line_structurer_spreadsheet`, `llm_filter`, `llm_segment`, `match_confirm`, `misc_productline`, `noise_rescue`, `structured_search_specs`, `translate`, `validation_repair`, `wall_judge`, `wall_split`, `compound_split_min`, `compound_split_per_candidate`, `context_resolve`, `line_context_classify`, `bind_notes`, `part_code_validation`.
 
-## IAM policies
+---
 
-### Dev policy (`policy-dev.json`)
+## IAM Policies
 
-| Service | Actions | Resources |
+The Lambda execution role uses explicit IAM policy files (not auto-generated).
+
+### Dev Policy (`policy-dev.json`)
+
+**File:** `quote_builder/.chalice/policy-dev.json`
+
+| Sid | Actions | Resources |
 | --- | --- | --- |
-| DynamoDB | `GetItem`, `PutItem`, `UpdateItem`, `Query`, `Scan` | `parrot-jobs-dev`, `parrot-jobs-dev-v2` |
-| S3 | `GetObject`, `PutObject`, `DeleteObject`, `ListBucket` | `parrot-uploads-dev-201014308786` |
-| SQS | `SendMessage`, `ReceiveMessage`, `DeleteMessage`, `GetQueueAttributes`, `GetQueueUrl` | `parrot-job-dispatch-dev`, `parrot-job-dispatch-dev-dlq` |
-| SSM | `GetParametersByPath`, `GetParameter` | `arn:aws:ssm:*:*:parameter/parrot/*` |
-| Logs | `CreateLogGroup`, `CreateLogStream`, `PutLogEvents` | `arn:aws:logs:*:*:*` |
-| VPC | `CreateNetworkInterface`, `DescribeNetworkInterfaces`, `DeleteNetworkInterface`, `AssignPrivateIpAddresses`, `UnassignPrivateIpAddresses` | `*` |
+| `DynamoDB` | `GetItem`, `PutItem`, `UpdateItem`, `Query`, `Scan` | `parrot-jobs-dev`, `parrot-jobs-dev-v2` tables and indexes |
+| `S3` | `GetObject`, `PutObject`, `DeleteObject`, `ListBucket` | `parrot-uploads-dev-201014308786` bucket and objects |
+| `SQS` | `SendMessage`, `ReceiveMessage`, `DeleteMessage`, `GetQueueAttributes`, `GetQueueUrl` | `parrot-job-dispatch-dev`, `parrot-job-dispatch-dev-dlq` |
+| `SSM` | `GetParametersByPath`, `GetParameter` | `arn:aws:ssm:*:*:parameter/parrot/*` |
+| `Logs` | `CreateLogGroup`, `CreateLogStream`, `PutLogEvents` | `arn:aws:logs:*:*:*` |
+| `VPCNetworking` | `CreateNetworkInterface`, `DescribeNetworkInterfaces`, `DeleteNetworkInterface`, `AssignPrivateIpAddresses`, `UnassignPrivateIpAddresses` | `*` |
 
-### Prod policy (`policy-prod.json`)
+### Prod Policy (`policy-prod.json`)
 
-Same actions, but resources target prod names:
+**File:** `quote_builder/.chalice/policy-prod.json`
 
-| Service | Resources |
+| Sid | Actions | Resources |
+| --- | --- | --- |
+| `DynamoDB` | Same as dev | `parrot-jobs`, `parrot-jobs-v2` tables and indexes |
+| `S3` | Same as dev | `parrot-uploads-201014308786` bucket and objects |
+| `SQS` | Same as dev | `parrot-job-dispatch`, `parrot-job-dispatch-dev-dlq` |
+| `SSM` | Same as dev | `arn:aws:ssm:*:*:parameter/parrot/*` |
+| `Logs` | Same as dev | `arn:aws:logs:*:*:*` |
+| `VPCNetworking` | Same as dev | `*` |
+
+**Note:** The prod SQS policy references `parrot-job-dispatch-dev-dlq` for the dead-letter queue, matching the dev DLQ name.
+
+---
+
+## AWS Resources
+
+### DynamoDB Tables
+
+| Table | Stage | Schema | Purpose |
+| --- | --- | --- | --- |
+| `parrot-jobs-dev` | dev | V1: `job_id` (PK) | Job metadata and results (dev mode) |
+| `parrot-jobs-dev-v2` | dev | V2: `job_id` (PK), `sk` (SK) | Job metadata with composite key |
+| `parrot-jobs` | prod | V1: `job_id` (PK) | Job metadata and results |
+| `parrot-jobs-v2` | prod | V2: `job_id` (PK), `sk` (SK) | Job metadata with composite key |
+
+The V2 schema uses `sk = "JOB"` for the main record. Selection is controlled by `PARROT_API_VERSION=v2`.
+
+**File:** `chalicelib/aws/dynamodb.py`
+
+### SQS Queues
+
+| Queue | Stage | Purpose |
+| --- | --- | --- |
+| `parrot-job-dispatch-dev` | dev | Main job dispatch queue (Lambda trigger) |
+| `parrot-job-dispatch` | prod | Main job dispatch queue |
+| `parrot-job-dispatch-dev-dlq` | both | Dead-letter queue |
+
+### S3 Buckets
+
+| Bucket | Stage | Purpose |
+| --- | --- | --- |
+| `parrot-uploads-dev-201014308786` | dev | Job file uploads and result JSON storage |
+| `parrot-uploads-201014308786` | prod | Job file uploads and result JSON storage |
+
+Result objects are stored at `results/{job_id}/result.json`.
+
+**File:** `chalicelib/aws/s3.py`
+
+### Elasticsearch
+
+| Property | Value |
 | --- | --- |
-| DynamoDB | `parrot-jobs`, `parrot-jobs-v2` |
-| S3 | `parrot-uploads-201014308786` |
-| SQS | `parrot-job-dispatch`, `parrot-job-dispatch-dev-dlq` |
+| URL | `https://10.1.0.37:9200` (default, override via `ES_URL`) |
+| Index | `catsy_data_scheduled_jobs` (override via `ES_INDEX`) |
+| Auth | API key via `ES_API_KEY` |
+| Usage | Direct structured catalog search with term filters on `nominal_size_1`, `dimension_ratio_dr`, `category_tier_1`, etc. |
 
-## AWS resources
+**File:** `chalicelib/pipeline/match/search/catalog_es.py`
 
-| Resource | Dev name | Prod name |
+### VPC Networking
+
+| Property | Value |
+| --- | --- |
+| Security Group | `sg-0b3faeef88c27c746` |
+| Subnet | `subnet-0d37f2507aacfe8a6` |
+
+The Lambda runs in a VPC to reach the internal Elasticsearch instance at `10.1.0.37:9200`.
+
+---
+
+## LLM Client Configuration
+
+The `OpenRouterClient` (`chalicelib/llm/openrouter.py`) is configured entirely via environment variables:
+
+| Variable | Default | Description |
 | --- | --- | --- |
-| DynamoDB jobs table | `parrot-jobs-dev` | `parrot-jobs` |
-| DynamoDB jobs table v2 | `parrot-jobs-dev-v2` | `parrot-jobs-v2` |
-| S3 uploads bucket | `parrot-uploads-dev-201014308786` | `parrot-uploads-201014308786` |
-| SQS dispatch queue | `parrot-job-dispatch-dev` | `parrot-job-dispatch` |
-| SQS DLQ | `parrot-job-dispatch-dev-dlq` | `parrot-job-dispatch-dev-dlq` |
-| Lambda security group | `sg-0b3faeef88c27c746` | `sg-0b3faeef88c27c746` |
-| Lambda subnet | `subnet-0d37f2507aacfe8a6` | `subnet-0d37f2507aacfe8a6` |
+| `OPENROUTER_API_KEY` | (required) | Bearer token for OpenRouter API |
+| `OPENROUTER_MODEL` | `google/gemini-3-flash-preview` | Default model for all LLM calls |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | API endpoint |
+| `OPENROUTER_HTTP_REFERER` | (none) | Optional HTTP-Referer header |
+| `OPENROUTER_X_TITLE` | (none) | Optional X-Title header |
+| `OPENROUTER_REASONING_EFFORT` | (none) | Reasoning effort for supported models |
+| `OPENROUTER_MAX_IN_FLIGHT_PER_JOB` | `100` | Semaphore limit for async LLM calls |
 
-## Orchestration dual mode
+**Key behaviors:**
 
-The worker reports results in two modes, controlled by the presence of `orchestration-api-url`:
+- Uses a shared `urllib3.PoolManager` with `maxsize=32` and disabled retries at the transport level (pipeline handles its own retry/escalation).
+- Connection-level failures (handshake timeout, reset) get 3 jittered retries with exponential backoff starting at 0.75s.
+- `session_id` is set to the `job_id` so all LLM calls for a job group together in OpenRouter activity logs.
+- GPT-OSS models automatically get `reasoning_effort: "low"` if not explicitly set.
 
-- **Dev mode**: Orchestration URL is empty. The worker writes progress, completion, and failure directly to DynamoDB.
-- **Prod mode**: Orchestration URL is configured. The worker sends S1/S2/S3 HTTP callbacks to the Orchestration API and writes result JSON to S3 for reference.
+---
 
-See `/parrot/orchestration-api` for the Orchestration API contract.
+## Cohere Rerank Configuration
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `COHERE_API_KEY` | (required to enable) | Bearer token for Cohere API |
+| `COHERE_RERANK_MODEL` | `rerank-v3.5` | Model identifier |
+
+**Key behaviors:**
+
+- Max 5 retries with exponential backoff on 429 rate-limit responses.
+- Default rate limit: 15 RPS (`RERANK_RPS`).
+- **Currently disabled in production** — the runner passes `effective_cohere = None`.
+
+---
+
+## Cloudflare Markdown Configuration
+
+| Variable | Description |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier |
+| `CLOUDFLARE_API_TOKEN` | API token with Workers AI scope |
+
+**Key behaviors:**
+
+- Calls `POST /client/v4/accounts/{id}/ai/tomarkdown` for document conversion.
+- Supports: `pdf`, `jpeg`, `jpg`, `png`, `webp`, `svg`, `html`, `xml`, `xlsx`, `xlsm`, `xlsb`, `xls`, `numbers`, `et`, `ods`, `csv`, `docx`, `odt`.
+- Metadata sections and filename headings are stripped from output.
+
+---
+
+## LlamaParse Configuration
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `LLAMA_PARSE_API_KEY` | (from SSM) | LlamaCloud API key |
+| `LLAMA_CLOUD_API_KEY` | (alternate) | Alternate env var name |
+| `LLAMA_PARSE_TIER` | `agentic` | Parsing tier |
+| `LLAMA_PARSE_VERSION` | `latest` | Parsing version |
+
+---
+
+## Pipeline Runner Modes
+
+The `PipelineRunner` (`chalicelib/pipeline/runner.py`) supports several operational modes:
+
+| Mode | How to Enable | Effect |
+| --- | --- | --- |
+| `extraction_only` | Pass `extraction_only=True` to runner | Skips all matching stages after extraction |
+| `cost_mode` | Pass `cost_mode=True` to runner | Resolves dollar costs from OpenRouter generation IDs at end |
+| `inventory` | Pass `mode="inventory"` to runner | Uses strict SKU reconciliation prompts instead of RFQ matching |
+| `llm_enabled=false` | Pass `llm_enabled=False` to runner | Disables all LLM features; deterministic fallback paths only |
+
+When `llm_enabled=False`:
+
+- Translation is skipped
+- Segmentation uses regex fallback
+- Structurer passes through raw lines
+- Filter uses deterministic regex
+- Junk filter is disabled
+- Match selection is disabled
+- Context resolve is disabled
+- Match confirm marks all as NO-MATCH
+- Cohere rerank is disabled
+
+---
+
+## Cost Tracking
+
+When `cost_mode=True`, the pipeline resolves actual dollar costs from OpenRouter after completion:
+
+1. `CostTracker` collects all `generation_id` values from OpenRouter calls.
+2. `OpenRouterClient.resolve_costs_batch()` queries `/v1/generation?id={id}` concurrently (default 10 workers).
+3. Costs are mapped back to each pipeline stage.
+
+Per-step cost data includes:
+
+- API call count
+- Prompt, completion, and total tokens
+- Cohere search units
+- Wall-clock seconds
+- Dollar cost (when resolved)
+
+**File:** `chalicelib/pipeline/cost.py`
