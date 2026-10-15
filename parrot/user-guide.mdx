@@ -1,1 +1,207 @@
+---
+title: "Use Parrot to upload, review, and export quotes"
+sidebarTitle: "User Guide"
+description: "How ISCO staff use Parrot inside Pipeline: role-based access, uploading RFQs, tracking job statuses, reviewing matched lines in the React quote builder, submitting feedback, and exporting quotes to Prelude."
+---
 
+Parrot is the AI Quote Builder embedded inside Pipeline. It lets sales staff upload customer RFQ documents, review AI-extracted line items and catalog matches, correct any mismatches, and export a finalized quote into Prelude. This page covers the complete user workflow from the perspective of the PHP pages and React components that make up the UI.
+
+## Who can access Parrot
+
+Access is gated by Pipeline role IDs defined in `inc/roles.php`:
+
+| Role | ID | Pages |
+| --- | --- | --- |
+| Global Admin | 1 | All Parrot pages |
+| IT Admin | 36 | All Parrot pages |
+| Parrot Tester | 67 | `parrot.php` (quote builder) |
+| Parrot Team | 73 | `parrot_job_upload.php`, `parrot_management.php` |
+
+Each PHP entry page checks the user's `$role_id_list` against an `$allowed_role_ids` array and exits with "Access Denied" if there is no intersection. The React app receives `data-user_role_ids` from the PHP wrapper so the UI can also gate features (for example, the debug-mode "Show API Results" button is shown only when role IDs include 1, 36, or 67).
+
+## Entry points
+
+There are three PHP pages that mount the same React bundle (`/dist/quote_builder.js`) with different initial screens and data payloads.
+
+### 1. `sales/parrot.php` (single-customer quote builder)
+
+Opened from a customer detail page with `?cust=<code>&co=<company>`. The page:
+
+1. Queries `[SQL2019STD].[ISCO_PRELUDE].[dbo].[Customer]` for the customer record.
+2. Resolves the current Windows user to a Prelude key via `[IT].[dbo].[ISCO_AD_user]`.
+3. Builds a JSON `Data` payload with fields such as `company_id`, `customer_id`, `written_by`, `team_id`, `ship_to_address_one`, `ship_via`, `sales_warehouse`, `ship_warehouse`, `customer_type`, `attention`, `phone`, and `order_comments`.
+4. Renders `<div id="quote-builder">` with `data-body`, `data-current_user`, `data-cust`, `data-co`, and `data-user_role_ids`.
+
+The React app reads those attributes and opens directly to the **Upload** screen for that customer.
+
+### 2. `sales/parrot_job_upload.php` (team upload page)
+
+Opened with `?cust=<code>&co=<company>` or `?job_id=<id>` or `?team_id=<id>&team_name=<name>`. It allows the Parrot Team (role 73) to upload files on behalf of a customer or team. The page also resolves the user's primary team from `[IT].[dbo].[sales_oracle_users]` and passes `data-primary_team` and `data-current_team` into the React app. The initial screen is `upload`.
+
+### 3. `sales/parrot_management.php` (job management)
+
+Opened with `?job_id=<id>` or `?team_id=<id>&team_name=<name>` or `?cust=<code>&co=<company>&initiate=upload`. This is the main management view for the Parrot Team. The initial screen is `management`, which renders the **Jobs** list. If `?initiate=upload` is passed, it opens to the upload screen instead.
+
+## Jobs screen (management view)
+
+The Jobs screen (`lib/render/jobs_screen.jsx`) shows every quote job for the current team. It is the default view on `parrot_management.php`.
+
+### Columns and visibility
+
+The table shows these columns. Visibility is controlled by a cookie (`qb_jobs_visible_cols`) and a toggle dropdown:
+
+| Column key | Label | Default visible |
+| --- | --- | --- |
+| `uploadStatus` | Upload Status | Yes |
+| `jobId` | JobID | No |
+| `shipTo` | Ship To | No |
+| `customer_id` | Customer Code | Yes |
+| `file` | File | Yes |
+| `writtenBy` | Written By | Yes |
+| `lastUpdatedOn` | Last Updated On | Yes |
+| `createdOn` | Created On | Yes |
+| `exportStatus` | Export Status / Progress | Yes |
+
+### Status indicators
+
+Each row shows a colored dot:
+
+| Color | Meaning | Backend status |
+| --- | --- | --- |
+| Green | Succeeded (ready to review) | `SUCCEEDED` |
+| Yellow | In queue or running | `RUNNING`, `QUEUE`, `QUEUED` |
+| Gray | Awaiting upload | `AWAITING_UPLOAD` |
+| Red | Failed | `FAILED`, `ERROR` |
+| Blue | Exported to Prelude | `SUCCEEDED` + `exported_to_prelude` |
+| Light gray | Abandoned | `abandoned === true` |
+
+A lock icon appears when another user holds the edit lock (`locked_by`).
+
+### Progress and export state
+
+For jobs that are not yet exported, the **Export Status** column shows:
+
+- A progress bar with `pendingCount / lineCount` and a percentage.
+- "Ready for export" badge when every line is confirmed or marked no-match.
+- "Quote XXX-XXXXX" once exported, with the `prelude_quote_id` formatted as `###-#####`.
+
+### Actions on the Jobs screen
+
+- **New Job**: opens the Upload screen.
+- **Hide done / Show All**: toggles a filter that hides exported and abandoned jobs.
+- **Reload Jobs**: refreshes the list from the API.
+- **Search**: filters by ship-to name, customer code, or filename.
+- **Load More**: fetches the next cursor-paginated page from the API.
+- **Feedback**: opens a modal to submit page-level feedback, which POSTs to `/v1/feedback`.
+
+Clicking a succeeded job row opens the Review screen.
+
+## Upload screen
+
+The Upload screen (`lib/render/upload_screen.jsx`) accepts multiple files in a single upload action.
+
+### File rules (enforced in UI and API)
+
+| Rule | Value |
+| --- | --- |
+| Allowed extensions | `.pdf`, `.xlsx`, `.xls`, `.csv`, `.docx`, `.txt`, `.eml`, `.msg` |
+| Max size per file | 10 MB (10,485,760 bytes) |
+
+### Upload flow
+
+1. The user selects files.
+2. The React app calls `POST /v1/jobs` with metadata (`company_id`, `customer_id`, `written_by`, `team_id`, `files[]`).
+3. The API returns a `job_id` and a list of presigned PUT URLs (`uploads[].url`).
+4. The app uploads each file directly to S3 using the presigned URL.
+5. The app calls `POST /v1/jobs/{job_id}/submit` with an empty body `{}` to move the job from `AWAITING_UPLOAD` to `QUEUED`.
+
+During upload, a progress spinner and stage label are shown. Once submitted, the app navigates to the Jobs screen.
+
+## Review screen
+
+The Review screen (`lib/render/review_screen.jsx`) is where users inspect extracted lines, confirm or correct catalog matches, edit header fields, and export.
+
+### Layout
+
+The screen is split into three areas stacked vertically:
+
+1. **ReviewHeader**: breadcrumbs, counts, export controls, and Prelude save actions.
+2. **PreludeHeader**: editable quote header fields (ship-to, warehouse, ship-via, attention, comments, and so on).
+3. **ReviewDetail**: the line-item table with candidate matches.
+
+### Line-item table
+
+Each row shows:
+
+- **Line Detail**: the raw extracted text.
+- **Cust Qty / Cust UOM**: quantities from the RFQ.
+- **Status**: pending, confirmed, or no-match.
+- **Selected Part / Description**: the catalog part the user chose.
+- **Selected UOM**: shown in red with a "(mismatch)" label when it differs from the customer UOM.
+- **Sell Qty**: editable input. A Save button appears only when the value differs from the original, with a tooltip showing "Original: X" where X is the previous value.
+
+### Actions per line
+
+- **Confirm**: commits the top candidate (or the selected candidate) as the matched part. If both sell qty and sell UOM are set, an `edit` action is sent first, then `confirm`.
+- **Mark No Match**: marks the line as `no_match` and assigns a placeholder part number.
+- **Undo**: resets a confirmed or no-match line back to `pending`.
+- **Add line**: inserts a user-submitted line at a chosen position.
+- **Soft delete / restore**: removes or restores a line (affects summary counts).
+
+### Bulk actions
+
+- **Confirm all pending**: confirms every pending line that has a non-blank part number, UOM, and sell qty.
+- **No-match all pending**: marks every remaining pending line as no-match.
+- **Reset all lines**: POSTs to `/v1/jobs/{job_id}/lines/reset` to return every line to `pending`.
+
+### Prelude header editing
+
+The PreludeHeader component (`lib/render/prelude_header.jsx`) loads picklist data from the Pipeline Services API:
+
+| Field | Picklist endpoint |
+| --- | --- |
+| Ship Via | `https://pathfinder.isco-pipe.com:4443/api/v1/picklist/ship_via` |
+| Warehouses | `https://pathfinder.isco-pipe.com:4443/api/v1/picklist/warehouses` |
+| Markets | `https://pathfinder.isco-pipe.com:4443/api/v1/picklist/markets` |
+| Customers | `https://pathfinder.isco-pipe.com:4443/api/v1/picklist/customers` |
+| Ship To | `https://pathfinder.isco-pipe.com:4443/api/v1/picklist/shipto` |
+
+Required fields for export are: `company_id`, `customer_id`, `written_by`, `ship_to_address_one`, `ship_warehouse`, and `sales_warehouse`. The UI blocks export until these are filled.
+
+### Export options
+
+| Export type | Behavior |
+| --- | --- |
+| **CSV** | Generated locally from the current payload; no API call. |
+| **Text (.txt)** | POSTs to `/v1/jobs/{job_id}/export/text`; downloads a `.txt` file (or a `.zip` if there are more than 200 lines). |
+| **Prelude** | POSTs to `/v1/jobs/{job_id}/export/prelude`. On success, the job is marked `exported_to_prelude` and the `prelude_quote_id` is returned. |
+
+### Feedback during review
+
+Users can open three feedback modals:
+
+- **Page feedback**: general feedback about the review page.
+- **Header feedback**: feedback tied to a specific header field.
+- **Lines feedback**: feedback tied to one or more selected line items.
+
+All feedback POSTs to `/v1/feedback` and becomes an Azure DevOps work item.
+
+### Edit locking
+
+While a user is actively reviewing a job, the UI sends a heartbeat `POST /v1/jobs/{job_id}/lock` every 60 seconds. If the user is inactive for 15 minutes, an alert fires and the page returns to the Jobs screen (or reloads `parrot.php` for a shared view). A job locked by another user shows a lock icon in the Jobs list and opens in read-only mode.
+
+## Management page specifics
+
+`parrot_management.php` is the primary entry point for the Parrot Team. It supports these query parameters:
+
+| Parameter | Purpose |
+| --- | --- |
+| `job_id` | Open directly to the review screen for that job. |
+| `team_id` + `team_name` | Open the Jobs list filtered to that team. |
+| `cust` + `co` | Open the upload screen for that customer. |
+| `status` | Pre-filter the Jobs list by status bucket. |
+| `initiate=upload` | Force the upload screen even when a customer is provided. |
+
+The page resolves the user's primary team from `[IT].[dbo].[sales_oracle_users]` joined to `[IT].[dbo].[rpt_sales_teams]`. If no team is found and the user does not have Parrot Team access, it shows:
+
+> "User were not assign to any teams and does not have access to the Parrot Team. Please contact an admin to either assign roles as Parrot Team or assign the user to a team."
