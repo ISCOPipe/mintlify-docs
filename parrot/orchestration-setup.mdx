@@ -1,59 +1,348 @@
 ---
-title: "Set up the Parrot orchestration API from GitHub"
-sidebarTitle: "Orchestration API"
-description: "Clone iscopipe/quote_builder_orchestration, install the Chalice apps, run the unit tests with faked AWS services, and deploy to dev or prod."
+title: "Set up and operate the Parrot orchestration layer"
+sidebarTitle: "Orchestration Setup"
+description: "Local setup, configuration, testing, scripts, and deployment for both Chalice apps in the Parrot orchestration repo."
 ---
 
-The Parrot orchestration repo (`iscopipe/quote_builder_orchestration`) holds two AWS Chalice apps that sit between the Pipeline UI and the worker.
+The Parrot orchestration repo (`iscopipe/quote_builder_orchestration`) contains two AWS Chalice Lambda apps that sit between the Pipeline React UI and the AI worker. This page covers how to set them up locally, run tests, configure stages, operate the one-off scripts, and deploy.
 
-| App | Purpose |
-| --- | --- |
-| `orchestration-frontend-contract` | Public API used by the Pipeline UI: jobs, lines, dashboard, export, feedback, Kore lookups, and auth |
-| `orchestration-service-contract` | Internal API the worker calls back into with job results |
+<Warning>
+  The repo contains committed secrets (API keys, AWS credentials, database passwords, Azure PATs). Do not copy values from the source. Obtain credentials from the team's secret store or a teammate.
+</Warning>
 
-## Set up
+## Repository layout
 
-<Steps>
-  <Step title="Clone the repository">
-    ```bash
-    git clone https://github.com/iscopipe/quote_builder_orchestration.git
-    cd quote_builder_orchestration/orchestration-frontend-contract
-    ```
-  </Step>
-  <Step title="Create a virtual environment and install dependencies">
-    ```bash
-    python3.12 -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    ```
-  </Step>
-  <Step title="Run the tests">
-    ```bash
-    python -m unittest discover -s tests -v
-    ```
+```text
+quote_builder_orchestration/
+  orchestration-frontend-contract/   # Public API (Pipeline UI)
+    app.py
+    .chalice/config.json
+    .chalice/policy-dev.json
+    .chalice/policy-prod.json
+    chalicelib/
+      auth.py
+      aws_tools.py
+      blueprints/
+        __init__.py
+        dashboard.py
+        exports.py
+        feedback.py
+        header.py
+        jobs.py
+        lines.py
+      constants.py
+      cursors.py
+      dashboard.py
+      deps.py
+      export.py
+      feedback.py
+      jobs.py
+      keys.py
+      kore.py
+      lines.py
+      logs.py
+      models.py
+      repository.py
+      responses.py
+      timeutils.py
+    tests/
+      README.md
+      api_case.py
+      support.py
+      test_app_surface.py
+      test_dashboard_route.py
+      test_exports_routes.py
+      test_feedback_route.py
+      test_header_route.py
+      test_jobs_routes.py
+      test_lines_routes.py
+    requirements.txt
+  orchestration-service-contract/      # Internal API (worker callbacks)
+    app.py
+    .chalice/config.json
+    .chalice/policy-dev.json
+    .chalice/policy-prod.json
+    chalicelib/
+      aws_tools.py
+      models.py
+    requirements.txt
+  scripts/
+    backfill_customer_names.py
+    backfill_team_ids.py
+    backfill_team_names.py
+    backfill_written_by_names.py
+    convert_job_table_to_v2.py
+    dashboard_migration.md
+    requirements.txt
+  .github/workflows/deploy.yaml.unused
+```
 
-    AWS services are fully faked in the tests, so no credentials are needed.
-  </Step>
-  <Step title="Repeat for the service contract">
-    Create a virtual environment and run `pip install -r requirements.txt` in `orchestration-service-contract/`. This app has no test suite yet.
-  </Step>
-</Steps>
+## Prerequisites
+
+- Python 3.9+ (the repo is developed on 3.13)
+- AWS CLI configured with a profile that can read/write the target DynamoDB tables
+- `pip` and `venv`
+
+## Local setup
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/iscopipe/quote_builder_orchestration.git
+cd quote_builder_orchestration
+```
+
+### 2. Install the frontend contract
+
+```bash
+cd orchestration-frontend-contract
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+The `requirements.txt` includes `chalice`, `pydantic`, `boto3`, and other runtime dependencies.
+
+### 3. Install the service contract
+
+```bash
+cd ../orchestration-service-contract
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
 ## Configuration
 
-Runtime configuration comes from SSM Parameter Store. Each stage sets `SSM_PARAMETER_PREFIX` in `.chalice/config.json`:
+### .chalice/config.json stages
 
-| Stage | `SSM_PARAMETER_PREFIX` |
+Both apps use the same stage structure. The frontend contract adds `lambda_memory_size` and VPC attachment.
+
+#### Frontend contract (`orchestration-frontend-contract/.chalice/config.json`)
+
+```json
+{
+  "version": "2.0",
+  "app_name": "orchestration-frontend-contract",
+  "stages": {
+    "dev": {
+      "api_gateway_stage": "api",
+      "lambda_memory_size": 256,
+      "manage_iam_role": true,
+      "autogen_policy": false,
+      "iam_policy_file": "policy-dev.json",
+      "environment_variables": {
+        "SSM_PARAMETER_PREFIX": "/parrot/dev"
+      },
+      "security_group_ids": ["sg-0b3faeef88c27c746"],
+      "subnet_ids": ["subnet-0d37f2507aacfe8a6"]
+    },
+    "prod": {
+      "api_gateway_stage": "api",
+      "lambda_memory_size": 512,
+      "manage_iam_role": true,
+      "autogen_policy": false,
+      "iam_policy_file": "policy-prod.json",
+      "environment_variables": {
+        "SSM_PARAMETER_PREFIX": "/parrot"
+      },
+      "security_group_ids": ["sg-0b3faeef88c27c746"],
+      "subnet_ids": ["subnet-0d37f2507aacfe8a6"]
+    }
+  }
+}
+```
+
+#### Service contract (`orchestration-service-contract/.chalice/config.json`)
+
+```json
+{
+  "version": "2.0",
+  "app_name": "orchestration-service-contract",
+  "stages": {
+    "dev": {
+      "api_gateway_stage": "api",
+      "manage_iam_role": true,
+      "autogen_policy": false,
+      "iam_policy_file": "policy-dev.json",
+      "environment_variables": {
+        "SSM_PARAMETER_PREFIX": "/parrot/dev"
+      }
+    },
+    "prod": {
+      "api_gateway_stage": "api",
+      "manage_iam_role": true,
+      "autogen_policy": false,
+      "iam_policy_file": "policy-prod.json",
+      "environment_variables": {
+        "SSM_PARAMETER_PREFIX": "/parrot"
+      }
+    }
+  }
+}
+```
+
+### SSM parameter names
+
+At cold start, `chalicelib/aws_tools.py` resolves configuration from AWS Systems Manager Parameter Store using the prefix set by `SSM_PARAMETER_PREFIX`.
+
+#### Frontend contract parameters
+
+| Parameter | Description |
 | --- | --- |
-| `dev` | `/parrot/dev` |
-| `prod` | `/parrot` |
+| `<prefix>/jobs-table-v2` | DynamoDB jobs table name |
+| `<prefix>/uploads-bucket` | S3 input bucket name |
+| `<prefix>/dispatch-queue-url` | SQS dispatch queue URL |
+| `<prefix>/orchestration_frontend_contract/api_key` | Bearer token for public API |
+| `<prefix>/team-created-gsi` | Team + created_at GSI name |
+| `<prefix>/kore_x_connection` | Kore API connection string |
+| `/parrot/kore-user` | Kore API username |
+| `/parrot/kore-pass` | Kore API password |
+| `/parrot/azure_devops_url` | Azure DevOps organization URL |
+| `/parrot/azure_devops_username` | Azure DevOps username |
+| `/parrot/azure_devops_pat` | Azure DevOps personal access token |
+| `/parrot/feedback-openrouter-api-key` | OpenRouter API key for feedback classification |
+| `/parrot/feedback-openrouter-model` | OpenRouter model name |
 
-Route blueprints live in `chalicelib/blueprints/` and shared constants in `chalicelib/constants.py`.
+#### Service contract parameters
 
-## Deploy
+| Parameter | Description |
+| --- | --- |
+| `<prefix>/jobs-table-v2` | DynamoDB jobs table name |
+| `<prefix>/uploads-bucket` | S3 input bucket name |
+| `<prefix>/dispatch-queue-url` | SQS dispatch queue URL |
+| `<prefix>/orchestration_service_contract/api_key` | Bearer token for internal API |
+
+<Note>
+  The service contract does not need Kore, Azure DevOps, or OpenRouter parameters because it only handles worker callbacks.
+</Note>
+
+## Running tests
+
+### Frontend contract tests
+
+The frontend contract has a full test suite that runs against faked AWS services. No AWS credentials are required.
 
 ```bash
+cd orchestration-frontend-contract
+python -m unittest discover -s tests -v
+```
+
+Test files:
+
+| File | Coverage |
+| --- | --- |
+| `test_app_surface.py` | App boot, blueprint registration, auth wiring |
+| `test_jobs_routes.py` | Create, list, get, submit, lock |
+| `test_lines_routes.py` | Add, patch, delete, restore, reset |
+| `test_header_route.py` | PATCH header edits |
+| `test_exports_routes.py` | Prelude export, text export, validate |
+| `test_feedback_route.py` | Feedback submission |
+| `test_dashboard_route.py` | Dashboard summary counts |
+
+### Service contract tests
+
+The service contract currently has **no tests**. If you add worker callback logic, create a matching test module under a new `orchestration-service-contract/tests/` directory.
+
+## Scripts
+
+The `scripts/` folder contains one-off backfill and migration scripts. All scripts default to the dev table (`parrot-jobs-dev-v2`). Pass `--table parrot-jobs-v2` explicitly for production.
+
+### Common script behavior
+
+- Every script defaults to **dry run** unless you pass `--execute`.
+- Every script supports `--table`, `--region`, `--sql-server`, and `--mapping-csv` flags.
+- Exit code `0` means everything resolved. Exit code `1` means some jobs were left unmatched.
+
+### Script inventory
+
+| Script | What it writes | Data source | Destructive? |
+| --- | --- | --- | --- |
+| `backfill_customer_names.py` | `customer_name` | `ISCO_PRELUDE.dbo.Customer` | No |
+| `backfill_written_by_names.py` | `written_by_name` | `IT.dbo.ISCO_AD_user`, `ISCO_PRELUDE.dbo.UserId` | No |
+| `backfill_team_ids.py` | `team_id`, `team_name`, `legacy_team_id` | `IT.dbo.sales_oracle_users`, `IT.dbo.rpt_sales_teams` | **Yes** (overwrites `team_id`) |
+| `backfill_team_names.py` | `team_name` | `IT.dbo.rpt_sales_teams` | No |
+| `convert_job_table_to_v2.py` | Migrates v1 items to v2 schema | Same table | Yes (writes to dest table) |
+
+### Running a backfill
+
+```bash
+# 1. See current state only (no SQL needed)
+python scripts/backfill_customer_names.py --table parrot-jobs-dev-v2
+
+# 2. Dry run against SQL Server
+python scripts/backfill_customer_names.py --table parrot-jobs-dev-v2 --sql-server <host>
+
+# 3. Execute
+python scripts/backfill_customer_names.py --table parrot-jobs-dev-v2 --sql-server <host> --execute
+```
+
+### Environment variables for scripts
+
+| Variable | Used by | Default |
+| --- | --- | --- |
+| `PARROT_SQL_SERVER` | All backfills | None (pass `--sql-server`) |
+| `PARROT_SQL_DATABASE` | All backfills | `IT` (or `ISCO_PRELUDE` for customer_names) |
+| `AWS_PROFILE` | All scripts | Default AWS profile |
+
+### CSV fallback (no pyodbc)
+
+If you cannot connect from Python, dump the mapping query in SSMS and pass the CSV:
+
+```bash
+python scripts/backfill_customer_names.py --print-query
+# Run the printed query in SSMS, save results as CSV
+python scripts/backfill_customer_names.py --table parrot-jobs-dev-v2 --mapping-csv customers.csv --execute
+```
+
+### Migration order
+
+1. `backfill_customer_names.py` and `backfill_written_by_names.py` (independent, additive).
+2. `backfill_team_ids.py` (overwrites `team_id`; read the dry-run unmatched list carefully).
+3. `backfill_team_names.py` (depends on numeric `team_id` from step 2).
+
+### convert_job_table_to_v2.py
+
+This is an already-completed migration. It splits v1 single-item jobs into v2 composite-key rows (one `sk=JOB` meta item + one item per line). If you ever need to run it again:
+
+```bash
+python scripts/convert_job_table_to_v2.py --source-table parrot-jobs-dev --dest-table parrot-jobs-dev-v2 --execute
+```
+
+## Deployment
+
+### Manual deployment
+
+Standard Chalice deploy commands are **not explicitly defined in the repo**, but the normal pattern is:
+
+```bash
+cd orchestration-frontend-contract
 chalice deploy --stage dev
 ```
 
-The `scripts/` folder contains one-off backfill and migration scripts. Read each script before running it against a real environment.
+```bash
+cd orchestration-service-contract
+chalice deploy --stage dev
+```
+
+### GitHub Actions workflow (unused)
+
+The repo includes `.github/workflows/deploy.yaml.unused`, which was planned but is not active. If enabled, it would:
+
+1. Detect which contract changed using `dorny/paths-filter`.
+2. Resolve the stage from the branch (`main` -> `prod`, everything else -> `dev`).
+3. Install Python 3.13, Chalice, and requirements.
+4. Configure AWS credentials from repository secrets (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`).
+5. Run `chalice deploy --stage <stage>` for the changed contract.
+
+To activate it, rename the file to `.github/workflows/deploy.yaml` and ensure the repository secrets are populated.
+
+## Architecture notes
+
+- **Cold start**: `deps.aws()` is called at module load in `app.py`, so SSM parameters are fetched during Lambda initialization, not on the first request.
+- **Single-table design**: The jobs table uses `job_id` as the partition key and `sk` as the sort key. `sk=JOB` is the meta row; every other `sk` is a line item.
+- **GSI indexes**:
+  - `TeamCreatedIndex` (partition `team_id`, sort `created_at`) for team-scoped listings.
+  - `StatusCreatedIndex` (partition `status`, sort `created_at`) for dashboard counts across all teams.
+- **VPC attachment**: The frontend contract attaches `security_group_ids` and `subnet_ids` in both dev and prod so it can reach internal SQL Server instances via the VPC.
+- **Auth**: Both apps use the same Bearer token model. The authorizer is defined in `chalicelib/auth.py` and registered as a Blueprint to avoid import cycles with route blueprints.
