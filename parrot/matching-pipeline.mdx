@@ -10,7 +10,21 @@ The Parrot matching pipeline transforms raw customer documents (emails, spreadsh
   Several files in this repo contain committed secrets (API keys, DB passwords, tokens). Never commit values to the repo. Use local config or the team's secret store. Document setting names only.
 </Warning>
 
-## Execution Order
+## Read the paths and results
+
+Worker paths on this page are relative to `quote_builder_aws/quote_builder/`. For example, the runner is `quote_builder/chalicelib/pipeline/runner.py` from the repository root. A candidate is a suggestion, not a confirmed quote line. Always compare extracted descriptions, quantities, and units with the source before export.
+
+### Spreadsheet selection
+
+For XLSX input with Cloudflare enabled, the worker runs native and Cloudflare extraction concurrently. It compares usable row and column counts after excluding blank columns. A rectangular candidate wins by shape only when it has at least as many rows and columns and is strictly larger in one dimension. Ties and crossed dimensions keep the native representation. If one parser fails, the other can still supply the result; failure of both raises an ingestion error. The worker records `spreadsheet_race` metadata for diagnosis.
+
+### Quantity boundaries
+
+Description cleanup converts explicit integer meter quantities only when the quantity agrees with the source expression and the unit is missing or metric-length compatible. It rounds that cleanup conversion upward to feet. The later unit-enrichment stage has its own conversion path. Do not assume every number followed by a metric size is a quantity or that all conversions use identical rounding.
+
+Source: `chalicelib/pipeline/ingest/spreadsheet_race.py`, `extract/cleanup/descriptions.py`, and `enrich/uom.py`.
+
+## Execution order
 
 The pipeline runs the following stages in order. Progress percentages are reported via `ToolContext.on_progress` and mapped to orchestration stages (extraction, ocr, rerank) in `WorkerService._run_pipeline`.
 

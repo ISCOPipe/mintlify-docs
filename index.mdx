@@ -1,45 +1,31 @@
 ---
-title: "ISCO engineering docs: Pipeline, Parrot, and QMD"
+title: "Find your way around ISCO applications"
 sidebarTitle: "Introduction"
-description: "Internal developer documentation for ISCO Industries projects: the Pipeline intranet, the Parrot AI quote builder, and the QMD weld management app."
+description: "Choose a product guide, understand the shared services, and find the source repository you need."
 ---
 
-These docs help ISCO developers understand, set up, and ship the three core internal projects: **Pipeline**, **Parrot**, and **QMD**. Each section explains what the project does, which GitHub repositories it lives in, and how to get it running locally.
+These guides cover four connected products. Start with the product you use or maintain. You do not need to run every repository to work on one application.
 
-<CardGroup cols={3}>
-  <Card title="Pipeline" icon="diagram-project" href="/pipeline/overview">
-    The PHP and React intranet used by sales, operations, finance, HR, and quality.
-  </Card>
-
-  <Card title="Parrot" icon="crow" href="/parrot/overview">
-    The AI quote builder that turns customer RFQs into matched product lines.
-  </Card>
-
-  <Card title="QMD" icon="fire" href="/qmd/overview">
-    The weld management suite: web portal, API, and Windows field app.
-  </Card>
+<CardGroup cols={2}>
+  <Card title="Pipeline" icon="diagram-project" href="/pipeline/overview">The intranet for sales, operations, finance, HR, and quality.</Card>
+  <Card title="Parrot" icon="crow" href="/parrot/overview">Upload a request for quotation, review suggested products, and export a quote.</Card>
+  <Card title="QMD" icon="fire" href="/qmd/overview">Record fusion joints in the Windows field app and review them in the web portal.</Card>
+  <Card title="ISCO NaviGator" icon="map" href="/navigator/overview">Plan sales visits, assign activities, and record visit outcomes.</Card>
 </CardGroup>
 
-## Repositories at a glance
+## Choose a starting point
 
-All repositories live in the `iscopipe` GitHub organization.
+- **Use an application:** follow the [Pipeline workflows](/pipeline/workflows), [Parrot user guide](/parrot/user-guide), [QMD field guide](/qmd/field-app), or [ISCO NaviGator user guide](/navigator/user-guide).
+- **Set up a development environment:** follow the [quickstart](/quickstart), then the setup page for your product.
+- **Trace a request:** start with the [architecture](/architecture), then open the product API reference.
+- **Find a supporting repository:** use the [source map](/source-map).
 
-| Project | Repository | Stack |
-| --- | --- | --- |
-| Pipeline | `iscopipe/pipeline` | PHP 8.2, React 19, Vite |
-| Parrot | `iscopipe/pipeline` (UI), `iscopipe/quote_builder_orchestration`, `iscopipe/quote_builder_aws` | React, Python 3.12, AWS Chalice |
-| QMD | `iscopipe/qmd_weld_app_web`, `iscopipe/qmd_weld_app_api`, `iscopipe/qmd_weld_app_windows` | ASP.NET MVC and Web API, UWP |
+## Common terms
 
-## Get started
+A **repository** holds one part of the source code. A **service** runs behind an application and handles requests. An **API endpoint** is a URL and HTTP method that a service accepts.
 
-<Steps>
-  <Step title="Get GitHub access">
-    Ask an `iscopipe` organization admin to add you to the repositories you need.
-  </Step>
-  <Step title="Clone the repositories">
-    Follow the [quickstart](/quickstart) to clone every project from GitHub.
-  </Step>
-  <Step title="Set up a project">
-    Use the setup guide for [Pipeline](/pipeline/local-setup), [Parrot](/parrot/worker-setup), or [QMD](/qmd/setup).
-  </Step>
-</Steps>
+In Parrot, a **job** is one uploaded request and its extracted lines. A **candidate** is a suggested catalog product, not a confirmed selection. In ISCO NaviGator, an **itinerary** is a saved plan; an **activity** is a visit assigned for execution. In QMD, a **joint** is a recorded fusion operation.
+
+<Warning>
+Use approved test records and obtain credentials through your team's access process. Examples in these guides do not grant access or make a write request safe to run against production.
+</Warning>

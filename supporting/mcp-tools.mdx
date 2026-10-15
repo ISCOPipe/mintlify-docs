@@ -1,0 +1,53 @@
+---
+title: "Use the MCP data tools"
+sidebarTitle: "MCP data tools"
+description: "Choose a data tool, resolve entity identities, and interpret results without treating every match as exact."
+---
+
+The MCP repositories expose employee, product, opportunity, quote/order, and Elasticsearch tools. They are separate services, not routes in Pipeline Services.
+
+## Connect to the correct service
+
+| Repository | HTTP path | Server key setting |
+| --- | --- | --- |
+| `elastic_mcp` | `/mcp/elastic_mcp` | `ELASTIC_MCP_KEY` |
+| `employee_mcp` | `/employee-mcp/mcp` | `EMPLOYEE_MCP_KEY` |
+| `product_mcp` | `/product-mcp/mcp` | `PRODUCT_MCP_KEY` |
+| `opportunity_mcp` | `/opportunity-mcp/mcp` | `MCP_KEY` |
+| `qovc_mcp` | `/qovc-mcp/mcp` | `MCP_KEY` |
+
+Get the host and key through the approved environment configuration. The Elasticsearch, employee, and product services default to ports `9950`, `9952`, and `9954`, respectively. Binding to a network interface does not make a service safe for public access. Requests without the required key receive `401`.
+
+## Resolve an entity before querying its records
+
+1. Inspect the service's schema or discovery tool. Do not assume that similarly named systems use the same field names.
+2. Read `entity_resolution_contracts` where the schema provides it.
+3. Map input fields with `fieldMap` and returned fields with `outputFieldMap`.
+4. Resolve an exact identifier where possible. For a name, inspect the candidate list and its company or source context.
+5. If several candidates remain, ask for a selection instead of choosing the first result.
+6. Follow `nextTools` to query the resolved entity's records.
+
+A person, company, or product name is not a reliable join key. Preserve the resolved identity across follow-up calls.
+
+## Interpret each tool's output
+
+- **Employee and product:** structured results include `items`, `count`, and `message`. Read the message when the list is empty or a query broadens.
+- **Elasticsearch:** tool results can contain JSON as text. The `es_search` tool expects its query DSL as a JSON-encoded string, not an arbitrary nested argument.
+- **Opportunity and QOVC:** discover the DAB-backed schema before building a query. Preserve exact company and source context when resolving records.
+- **QOVC:** filters combine with AND. Pagination defaults to 25 rows and allows at most 100 per page. Quote-line product identity uses `productCode`.
+
+Product tools normalize and broaden some searches. A lookup can fall back to a prefix match, so do not call every returned candidate an exact match. Work-order enrichment is opt-in; enable it only when the task needs that information.
+
+## Add a client safely
+
+1. Run the repository's documented dependency installation and local start command.
+2. Set the key in local configuration without committing it.
+3. Configure the MCP client with the service's full path and expected authentication header from its server middleware.
+4. Start with schema discovery and a read-only query against approved data.
+5. Check status, result shape, and pagination before integrating the result into another system.
+
+Do not paste keys or customer records into example tool calls. A tool server's available methods are not a substitute for your permission to use the underlying records.
+
+## Source reference
+
+See each repository's `src/server.ts` and its schema/tool definitions. The Elasticsearch checkout nests its implementation under `elastic_mcp/src/`. The [source map](/source-map) links all five inspected revisions.

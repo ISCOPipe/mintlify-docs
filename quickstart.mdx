@@ -1,64 +1,62 @@
 ---
-title: "Clone ISCO projects from GitHub and get set up"
+title: "Set up the product you need"
 sidebarTitle: "Quickstart"
-description: "Get access to the iscopipe GitHub organization, install the shared tools, and clone the Pipeline, Parrot, and QMD repositories to your machine."
+description: "Choose the right repositories and toolchain before starting local development."
 ---
 
-Every ISCO project lives in the `iscopipe` GitHub organization. This guide gets you from zero to a machine with all Pipeline, Parrot, and QMD repositories cloned, so you can move on to each project's setup guide.
+## 1. Get access
 
-## Prerequisites
+Confirm that you can read the required repositories in the `ISCOPipe` GitHub organization. Obtain development configuration and network access through your team. Do not copy credentials from source files or reuse production data to test a write operation.
 
-- A GitHub account added to the `iscopipe` organization (ask an org admin)
-- [Git](https://git-scm.com/downloads) and either SSH keys or the GitHub CLI configured for authentication
-- Credentials for the systems you will work with (SQL Server, AWS, Azure AD). Get these from your team lead; they are never stored in these docs.
+Install Git and configure GitHub authentication. Then create a workspace:
 
-## Clone the repositories
+```bash
+mkdir isco
+cd isco
+```
 
-<Steps>
-  <Step title="Create a workspace folder">
-    ```bash
-    mkdir isco && cd isco
-    ```
-  </Step>
-  <Step title="Clone the repositories you need">
-    <CodeGroup>
+## 2. Clone only the required repositories
 
-    ```bash Pipeline
-    git clone https://github.com/iscopipe/pipeline.git
-    ```
+| Product | Repositories | Next step |
+| --- | --- | --- |
+| Pipeline | `pipeline`; add `services_hot_reload` for API work | [Local setup](/pipeline/local-setup) |
+| Parrot | `pipeline`, `quote_builder_orchestration`, `quote_builder_aws` | [Worker setup](/parrot/worker-setup) and [orchestration setup](/parrot/orchestration-setup) |
+| QMD | `qmd_weld_app_windows`, `qmd_weld_app_web`, `qmd_weld_app_api` | [QMD setup](/qmd/setup) |
+| ISCO NaviGator | `itinerary-builder`, `navigator_services` | [App setup](/navigator/app-setup) and [services setup](/navigator/services-setup) |
 
-    ```bash Parrot
-    # The Parrot UI lives in the pipeline repo
-    git clone https://github.com/iscopipe/pipeline.git
-    git clone https://github.com/iscopipe/quote_builder_orchestration.git
-    git clone https://github.com/iscopipe/quote_builder_aws.git
-    ```
+For example, clone the ISCO NaviGator pair:
 
-    ```bash QMD
-    git clone https://github.com/iscopipe/qmd_weld_app_web.git
-    git clone https://github.com/iscopipe/qmd_weld_app_api.git
-    git clone https://github.com/iscopipe/qmd_weld_app_windows.git
-    ```
+```bash
+git clone https://github.com/ISCOPipe/itinerary-builder.git
+git clone https://github.com/ISCOPipe/navigator_services.git
+```
 
-    </CodeGroup>
-  </Step>
-  <Step title="Follow the project setup guide">
-    - [Pipeline local setup](/pipeline/local-setup)
-    - [Parrot worker setup](/parrot/worker-setup) and [orchestration API setup](/parrot/orchestration-setup)
-    - [QMD setup](/qmd/setup)
-  </Step>
-</Steps>
+The [source map](/source-map) lists supporting repositories and the branches used to verify these guides.
 
-## Install shared tooling
+## 3. Match the toolchain to the application
 
-| Tool | Needed for |
-| --- | --- |
-| PHP 8.2+, Composer | Pipeline |
-| Node.js 20 and npm | Pipeline React build, Parrot UI |
-| Python 3.12 and [uv](https://docs.astral.sh/uv/) | Parrot worker and orchestration |
-| AWS CLI with ISCO credentials | Parrot (SSM, DynamoDB, S3, SQS) |
-| Visual Studio with ASP.NET and UWP workloads | QMD |
+- **Pipeline:** PHP, Composer, required PHP extensions, and Node.js for the React bundles. The existing Windows setup expects connection includes outside the repository. The container setup is a separate path, not proof that every Windows page works unchanged on Linux.
+- **TypeScript services:** Node.js and npm. Use the repository's lockfile with `npm ci` and check its current runtime requirements.
+- **ISCO NaviGator frontend:** a Node.js version supported by the installed Vite toolchain. Its Vite 7 dependencies require a newer runtime than an arbitrary Node 20 installation.
+- **Parrot Python services:** Python 3.12 or later and `uv` for the worker. AWS access and external providers are needed for a full processing run.
+- **QMD:** Windows and Visual Studio with the workloads required by each .NET Framework or UWP solution. Do not substitute a portable `dotnet build` command without checking the project targets.
+
+## 4. Start and check one layer at a time
+
+1. Install dependencies from the product's setup guide.
+2. Add local configuration using placeholder templates where available. Check that secret files remain untracked.
+3. Build the changed component before starting it.
+4. Confirm its local URL and port from the startup output.
+5. Point the frontend at the intended development backend before signing in.
+6. Use a read-only request or approved test record to check the connection.
 
 <Warning>
-  Never commit credentials. Keep secrets in local `.env` files, AWS SSM, or untracked config, and confirm they are covered by `.gitignore` before you push.
+Both TypeScript APIs default to port `4443`. If you run them on the same machine, assign different `PORT` values and update the client base URLs. They are separate services with different authentication behavior.
 </Warning>
+
+## When setup fails
+
+- **Dependency install fails:** check your Node or Python version before changing the lockfile.
+- **Page loads but data does not:** check backend URL, network access, credentials, CORS, and browser request errors.
+- **API returns 401:** use the token type expected by that service. A Parrot API key is not a NaviGator Azure access token.
+- **QMD upload fails:** preserve local joints and follow the [field-app recovery steps](/qmd/field-app).

@@ -4,7 +4,7 @@ sidebarTitle: "Configuration"
 description: "Complete configuration reference for the Parrot quote-builder-worker Lambda: Chalice stages, SSM parameter map, environment variables, feature flags, IAM policies, and AWS resources."
 ---
 
-The Parrot worker is an AWS Chalice application (`quote-builder-worker`) that runs as an SQS-triggered Lambda. Configuration flows from SSM Parameter Store at cold start, with environment variable fallbacks for local development.
+The Parrot worker is an AWS Chalice application (`quote-builder-worker`) that runs as an SQS-triggered Lambda. Configuration flows from SSM Parameter Store at cold start, with environment variable fallbacks for local development. Unless a path starts with `quote_builder/`, worker paths on this page are relative to the `quote_builder_aws/quote_builder/` application directory.
 
 <Warning>
   This repo contains committed secrets (API keys, DB passwords, tokens). Never commit live values. Use SSM SecureString parameters or local `.env` files. Document setting names only.
@@ -51,7 +51,7 @@ These keys are set to `""` in `config.json` because their real values come from 
 | `ORCHESTRATION_API_URL` | `/parrot/{stage}/orchestration-api-url` | Base URL for O->S callbacks |
 | `OPENROUTER_API_KEY` | `/parrot/openrouter-api-key` | LLM API key |
 
-When `ORCHESTRATION_API_URL` is empty, the worker runs in **dev mode** and writes directly to DynamoDB instead of sending HTTP callbacks.
+When `ORCHESTRATION_API_URL` is empty, the worker writes directly to DynamoDB instead of sending HTTP callbacks. This does not make the run offline or prevent writes to real resources.
 
 ---
 
@@ -102,7 +102,8 @@ SSMConfig resolves each key in this priority:
 
 1. SSM Parameter Store value (cached at cold start)
 2. Environment variable (from `config.json` or local `.env`)
-3. Coded default (from `_PARAM_MAP`)
+3. Default supplied by the caller
+4. Mapped default (from `_PARAM_MAP`)
 
 After loading, `cfg.inject_env_vars()` pushes resolved SSM values back into `os.environ` so downstream code that reads env vars directly (e.g. `OpenRouterClient`) gets the SSM value.
 
@@ -110,7 +111,7 @@ After loading, `cfg.inject_env_vars()` pushes resolved SSM values back into `os.
 
 ## Local Environment Variables
 
-For local development and testing, these env vars override or supplement SSM:
+For local development and testing, these environment variables provide fallbacks when SSM has no value. They do not override an available SSM value:
 
 | Variable | Purpose | Example |
 | --- | --- | --- |

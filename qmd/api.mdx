@@ -1,1 +1,73 @@
+---
+title: "Use the QMD API"
+sidebarTitle: "API"
+description: "Understand QMD token routes, route-specific access checks, and safe health diagnostics."
+---
 
+The QMD API is the ASP.NET Web API solution in `qmd_weld_app_api/ISCO-API.sln`. It serves field-app uploads, equipment, transducers, and master data. It is separate from Pipeline Services and ISCO NaviGator Services.
+
+## Resolve the base URL
+
+Controllers declare paths such as `IscoApi/InsertJobInformation`. Combine the deployment's application origin and the controller route once. If a client setting already ends in `/IscoApi/`, append `InsertJobInformation`, not another `/IscoApi/` segment. Check IIS application routing before diagnosing a 404 as a missing controller.
+
+The API guide is verified against the repository's `stable` branch. Do not assume a `main` branch exists. See the [source map](/source-map).
+
+## Tokens and access checks
+
+`ISCO-API/App_Start/Startup.cs` configures two OAuth token endpoints:
+
+| Endpoint | Provider |
+| --- | --- |
+| `/IscoApi/token` | `AuthorizationServerProvider` and `RefreshTokenProvider` |
+| `/IscoApi/Gettoken` | `AuthorizationServerProviderNew` and `RefreshTokenProviderNew` |
+
+Both issue access tokens with a 60-minute lifetime. Use the provider expected by your client; their refresh providers are separate. Send protected requests with `Authorization: Bearer <access-token>`.
+
+<Warning>
+Token support is not universal route protection. Several controllers have commented-out `[Authorize]` attributes. The inspected startup also allows all CORS origins and permits insecure HTTP at the OAuth middleware level. These are implementation facts, not recommendations to expose the API or send credentials over HTTP. Use the approved HTTPS deployment and review each route's actual protection.
+</Warning>
+
+## Main route groups
+
+Paths below are controller routes, before any IIS application prefix.
+
+| Method and route | Purpose | Controller access attribute in inspected source |
+| --- | --- | --- |
+| `POST /IscoApi/InsertJobInformation` | Upload job/joint information | `[Authorize]` commented out |
+| `POST /IscoApi/InsertJobInformationTest` | Alternate job-information path | `[Authorize]` commented out; not a harmless health test |
+| `GET /IscoApi/GetMasterTablesRecord` | Read master records | `[Authorize]` commented out |
+| `POST /IscoApi/EquipmentInsert` | Write equipment | Active `[Authorize]` |
+| `POST /IscoApi/UpdateTransducer` | Update a transducer | Active `[Authorize]` |
+| `GET /IscoApi/GetAllMasterRecordsUpdated` | Retrieve master records through the update controller | Active `[Authorize]` |
+| `GET /IscoApi/api-health` | Check API dependencies | Read-only diagnostic handler |
+
+Use the models and controller actions as the request schema. A route name containing `Test` does not make it safe to call against production.
+
+## Check health without uploading a joint
+
+1. Confirm the intended API origin and IIS application prefix.
+2. Request the health route, not a job-insert endpoint.
+3. Read the JSON body as well as the HTTP status.
+4. Confirm both `DbConnection` and `IscoWebConnection` report `Ok`.
+
+```json
+{
+  "IscoWebConnection": "Ok",
+  "DbConnection": "Ok"
+}
+```
+
+The handler can return a successful HTTP response while one of those fields is `NotOk`. The web check uses the `IscoWeb` application setting; the database check uses the Entity Framework connection. HTTP success alone does not prove the API is healthy.
+
+## Troubleshoot field uploads
+
+- **401:** confirm the correct token provider and whether the access token expired.
+- **404:** check for a duplicated or missing `/IscoApi/` path and the deployed application's route configuration.
+- **Upload failure:** preserve the local joint and inspect the response before retrying. Do not delete local records to clear an error.
+- **Master data differs:** check which master-data action the client calls and whether it requests full records or updates.
+
+For operator steps, use the [field-app guide](/qmd/field-app). For build prerequisites, use [QMD setup](/qmd/setup).
+
+## Source reference
+
+Start with `ISCO-API/App_Start/Startup.cs` and `ISCO-API/Controllers/`. The route table above comes from `JobInformationsController`, `JobInformationTestController`, `MasterTableRecordsController`, `EquipmentController`, `TransducerController`, `MasterTableRecordsUpdateController`, and `HealthController`.

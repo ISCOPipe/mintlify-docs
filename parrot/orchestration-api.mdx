@@ -103,6 +103,8 @@ All non-2xx responses return a consistent body built by `chalicelib/responses.py
     }
     ```
 
+    **Required job fields**: `company_id`, `customer_id`, `written_by`, `team_id`, `ship_to_address_one`, and a nonempty `files` list. `team_name`, `customer_name`, and `written_by_name` are optional display labels; omitted or null labels become empty strings. They do not replace the identifier fields.
+
     **Validation**:
 
     - `file_ext` must be in `ALLOWED_FILE_EXTENSIONS` (`chalicelib/constants.py`).
@@ -120,6 +122,10 @@ All non-2xx responses return a consistent body built by `chalicelib/responses.py
     - `status` (optional): bucket name (`awaiting_upload`, `running`, `succeeded`, `exported`, `abandoned`, `failed`).
     - `limit` (default 50, max 200).
     - `cursor` (optional): opaque pagination cursor.
+
+    You may omit both `team_id` and `status`. Without a team, the handler visits status-index partitions one at a time. It sorts newest first within each partition, not globally across all jobs. Keep both filters unchanged when using `next_cursor`. A missing required status index returns `501 INDEX_NOT_AVAILABLE`.
+
+    Items also carry `team_name`, `customer_name`, and `written_by_name` display labels. Older records can have empty labels.
 
     **Response** (`200`):
 
@@ -472,12 +478,12 @@ All non-2xx responses return a consistent body built by `chalicelib/responses.py
         "failed": 3
       },
       "groups": [
-        { "group_key": "118", "group_label": "FL EAST", "total": 42, "buckets": { ... } }
+        { "team_id": "example-team", "team_name": "Example team", "total": 42, "buckets": { ... } }
       ]
     }
     ```
 
-    **Notes**: Counts are eventually consistent because they read from GSIs. A `501 INDEX_NOT_AVAILABLE` is returned if the required GSI is missing.
+    **Notes**: Grouping uses `team_id`; `team_name` is a display label. Jobs with no team ID belong to the empty-ID group. Without `group_by`, the response omits `groups`. Hiding abandoned or failed buckets removes their jobs from `total` and from grouped counts. Buckets are mutually exclusive. Counts are eventually consistent because they read from GSIs. A `501 INDEX_NOT_AVAILABLE` is returned if the required GSI is missing.
   </Accordion>
 </AccordionGroup>
 

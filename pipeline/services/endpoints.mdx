@@ -1,1 +1,96 @@
+---
+title: "Use the Pipeline Services API"
+sidebarTitle: "Endpoints"
+description: "Find route families, call read endpoints, and understand rental and quality contracts."
+---
 
+## Find the correct URL
+
+The service loads `src/api/<name>.ts` at startup and mounts its router at `/api/v1/<name>`. For example, `router.get('/open_shop_orders', ...)` in `rental_dashboard.ts` becomes `GET /api/v1/rental_dashboard/open_shop_orders`.
+
+Use your configured service origin. The local default is `http://localhost:4443`. Open `/docs` on that same origin for the generated Swagger reference. Read the handler when an annotation and the implementation disagree.
+
+<Warning>
+Pipeline Services does not apply a global bearer-token middleware in the inspected `main` branch. Protection is endpoint-specific and can also depend on the deployment environment. Do not assume that adding a bearer header authenticates a route, or that an accessible route is approved for public use. ISCO NaviGator has a separate [authenticated API](/navigator/services-api).
+</Warning>
+
+## Make a read request
+
+1. Start the API using [local setup](/pipeline/services/local-setup).
+2. Confirm the host and port in the startup output.
+3. Open `/docs` and find the route's required parameters.
+4. Call a read endpoint with test identifiers. Keep company codes as strings so leading zeroes remain intact.
+5. Check both the HTTP status and the response body. Response shapes differ across route families.
+
+For example, this local read asks for the company-specific growth summary:
+
+```bash
+curl --get 'http://localhost:4443/api/v1/rental_dashboard/growth_to_goal' \
+  --data-urlencode 'co=001'
+```
+
+Do not use creation, refresh, printing, email, assignment, or export endpoints as health checks. Even some GET routes perform integration work; inspect the handler before using an unfamiliar endpoint.
+
+## Route directory
+
+All paths below start with `/api/v1`. Each route family's source file has the same name under `services_hot_reload/src/api/`.
+
+| Area | Routes to start with | Purpose |
+| --- | --- | --- |
+| Orders and quotes | `GET /orders`, `GET /quotes`; `/orders/detail/header/:companyId/:orderId`, `/quotes/detail/lines/:companyId/:quoteId` | Lists, headers, and lines |
+| Product discovery | `POST /product_search`, `POST /product_lookup/search`, `GET /product_detail` | Search and product detail |
+| Picklists | `GET /picklist/ship_via`, `/warehouses`, `/markets`, `/customers`, `/shipto` | Form choices; append each subpath to `/picklist` |
+| Activities | `GET /activities`, `GET /activities/summary`, `PUT /activities/note`, `POST /activities/assign` | Workflow lists and changes |
+| Quality | `GET /ncr`, `GET /ncr/detail`, `POST /structure_test`, `POST /structure_test/retest` | NCR reporting and structure-test records |
+| Rentals | `GET /rental_dashboard/*`, `GET /rental_order/open_orders`, `GET /rental_asset_tracking/latest` | Metrics, orders, and equipment telemetry |
+| McElroy returns | `GET /mcelroy_rma/search`, `/typeahead`, `/aggregate`, `/facets`, `/trends`, `/stats`, `/:id` | RMA search and reporting; append subpaths to `/mcelroy_rma` |
+| Warehouse | `GET /warehouse_detail/summary`, `GET /bin`, `GET /transfers/detail` | Inventory and logistics |
+| Manufacturing | `GET /fab_scoreboard/on_time_wo_summary`, `GET /dc_fab_queue/queue` | Production reporting and queue data |
+| CRM and people | `POST /hubspot/contact/search`, `GET /employees/search`, `GET /user/roles` | Contact, employee, and role lookup |
+| Files and integrations | `POST /attachment`, `GET /s3/download`, `POST /emailer`, `POST /bartender/print` | Upload, download, email, and label printing |
+| Diagnostics | `GET /health`, `GET /health/smoketest` | Service/dependency diagnostics; inspect the smoke handler before use |
+
+This directory identifies entry points, not a common request schema. Consult `/docs` and the individual handler for filters, pagination, and validation.
+
+## Rental dashboard reads
+
+All of these endpoints use `GET /api/v1/rental_dashboard/<subpath>`:
+
+| Subpath | What you read |
+| --- | --- |
+| `daily_machine_availability` | Available, down, rented, and utilization figures |
+| `daily_machine_availability/machine_chart` | Availability chart data |
+| `quotes_by_equipment_type`, `orders_by_equipment_type` | Quote and order equipment breakdowns |
+| `daily_revenue_sum`, `daily_revenue_sum_chart`, `daily_revenue_sum_chart_by_year` | Revenue summaries and trends |
+| `product_category`, `equipment_revenue` | Category and equipment revenue breakdowns |
+| `open_shop_orders` | Open shop-order totals |
+| `growth_to_goal` | Current-year Rental, New, and Used sales against quarterly and annual goals |
+
+`open_shop_orders` accepts optional `co` and returns one object with `Total Orders`, `Total Dollars`, and `Total Hours`. It counts open shop jobs with open order/line records, selected product types, and the labor product used by the query. Treat these as the query's totals, not every open order in Prelude. Empty aggregates may be null.
+
+`growth_to_goal` accepts `co=001`, `co=070`, or an omitted/empty company filter. Any other nonempty value returns 400. With no company filter, the handler applies its combined-company goal calculation. Do not sum percentages from multiple responses. Database errors return 500, not an empty successful chart.
+
+Source: `src/api/rental_dashboard.ts`, especially `getMachineReport`, `/open_shop_orders`, and `/growth_to_goal`.
+
+## Create structure tests and retests
+
+`POST /api/v1/structure_test` writes records and workflow activities. Use an approved development work order.
+
+1. Supply the parent fields: `company_id`, `warehouse`, `work_order`, `work_order_quantity`, `bill_of_material`, `bill_of_material_description`, and `submitter`.
+2. Supply `tests[]`. Each item needs `test_medium`, `test_duration_minutes`, `test_pass`, `test_date`, and `tested_by`.
+3. Use a real calendar date in `YYYY-MM-DD` format. Supply a positive pressure for air tests (`test_medium=A`).
+4. If you already repaired and retested a failed test, include its `retest` object. The API rejects a retest attached to a passing initial test.
+5. Use `POST /structure_test/retest` for a later retest. Obtain repair reasons and leak locations from their lookup routes rather than inventing IDs.
+
+Retest validation includes its own required repair and test fields. A passing retest closes its linked retest activity. An inline failed retest leaves follow-up work open and can send notifications. The API rejects invalid dates before binding them to SQL. Check 400 error messages for the indexed failing field, such as `tests[0].retest`.
+
+Use `GET /structure_test/log`, `/log/detail`, and the `structure_test_log` reporting family to investigate history. See [quality workflows](/pipeline/workflows) for the user-facing sequence.
+
+## Troubleshoot a request
+
+- **404:** check the filename-based prefix, route method, and whether the process reloaded after a new route was added.
+- **400:** compare required fields and string lengths with the handler. Do not remove validation to make an example pass.
+- **401 or 403:** identify the route's actual authentication and deployment controls.
+- **500:** check the server log and its SQL or integration dependency. Retrying a write can duplicate work; verify the first result before retrying.
+
+See [adding a service](/pipeline/services/adding-a-service) for implementation conventions and [deployment](/pipeline/services/deployment) for reload and smoke-check constraints.

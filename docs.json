@@ -15,13 +15,15 @@
         "pages": [
           "index",
           "quickstart",
-          "architecture"
+          "architecture",
+          "source-map"
         ]
       },
       {
         "group": "Pipeline",
         "pages": [
           "pipeline/overview",
+          "pipeline/workflows",
           "pipeline/local-setup",
           "pipeline/project-structure",
           "pipeline/authentication",
@@ -75,6 +77,15 @@
           "navigator/services-setup",
           "navigator/services-api",
           "navigator/deployment"
+        ]
+      },
+      {
+        "group": "Supporting services",
+        "pages": [
+          "supporting/development-container",
+          "supporting/mcp-tools",
+          "supporting/document-retrieval",
+          "supporting/operations"
         ]
       }
     ]

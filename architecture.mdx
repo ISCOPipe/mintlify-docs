@@ -1,1 +1,59 @@
+---
+title: "Understand the application boundaries"
+sidebarTitle: "Architecture"
+description: "Trace a user action through Pipeline, Parrot, QMD, ISCO NaviGator, and their supporting services."
+---
 
+## The four products
+
+| Product | User interface | Backend | Main records |
+| --- | --- | --- | --- |
+| Pipeline | PHP pages and embedded React apps in `pipeline` | PHP handlers and `services_hot_reload` | Sales, operations, quality, and employee data |
+| Parrot | Quote builder embedded in Pipeline | Two orchestration contracts and an AWS worker | Uploads, jobs, extracted lines, product candidates, and exports |
+| QMD | ASP.NET web portal and Windows UWP field app | Dedicated ASP.NET Web API | Fusion jobs, joints, equipment, and calibration records |
+| ISCO NaviGator | React progressive web app in `itinerary-builder` | `navigator_services` | Saved itineraries, assigned activities, geographic entities, and user settings |
+
+A shared database or similar route name does not make these backends interchangeable. Use the product's configuration and authentication contract.
+
+## Pipeline request path
+
+1. A PHP page loads shared includes, checks the session and page access, and renders the screen.
+2. The page either queries data through PHP or mounts a compiled React bundle.
+3. The React app calls the API configured for that feature.
+4. The Pipeline Services API reads SQL Server, Elasticsearch, or an integration service and returns the result.
+
+The API mounts each file in `services_hot_reload/src/api/` under `/api/v1/<filename>` when the process starts. Development restarts pick up file changes; production requires a build and process reload. See [Pipeline authentication](/pipeline/authentication) and the [Services API reference](/pipeline/services/endpoints).
+
+## Parrot processing path
+
+1. The Pipeline UI creates a job through the orchestration frontend contract.
+2. The API returns presigned upload URLs. The browser uploads files directly to S3.
+3. Submission queues the job for asynchronous processing through SQS.
+4. The worker extracts lines, enriches quantities and units, retrieves product candidates, and reports progress and results.
+5. A user reviews the results and confirms, replaces, or marks lines as unmatched before export.
+
+The frontend contract serves browser operations. The service contract accepts internal worker callbacks. DynamoDB stores job state; S3 stores files. A successful extraction is not approval of the quote. See [Parrot review](/parrot/user-guide) and [matching stages](/parrot/matching-pipeline).
+
+## ISCO NaviGator planning and execution
+
+A saved itinerary is a plan. Assigning stops creates workflow activities. Once a stop is backed by an activity, supported edits write through to the backend. Geographic searches use Elasticsearch; activity workflows also use SQL Server and CRM integrations.
+
+Mapbox supplies map, address, and routing capabilities. Nearby points of interest are not necessarily customer records. See the [user guide](/navigator/user-guide) before interpreting a pin as an assigned visit.
+
+## QMD field and office work
+
+The Windows field app captures fusion information and stores local records. Uploading requires connectivity to the QMD API. The web portal lets authorized users filter and review uploaded records, inspect charts and images, and export reports.
+
+The API also serves equipment and master data. Token issuance does not imply that every controller enforces bearer authentication. See the [QMD API guide](/qmd/api) for route-specific caveats and the [field guide](/qmd/field-app) for recovery without losing local records.
+
+## Supporting services
+
+Supporting repositories handle background data updates, search and AI components, tool access through MCP, uploads, reports, and edge tracking. They do not all run inside the four product web servers. Use the [source map](/source-map) to find their guides and inspected source branches.
+
+## Diagnose the boundary first
+
+1. Identify the screen and its owning repository.
+2. Inspect the failed request's host, path, method, and response body.
+3. Match that request to the correct API guide. Do not infer authentication from the URL alone.
+4. Check whether the operation reads data, writes records, queues work, or sends a message.
+5. Reproduce in development with approved test data before retrying a production write.

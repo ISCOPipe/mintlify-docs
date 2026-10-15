@@ -50,6 +50,7 @@ cp dummyenv .env
 | `PORT` | HTTP port the server binds to | `4443` |
 | `CORS_ORIGIN` | Allowed origins (single or comma-delimited list) | `http://localhost:5173` |
 | `MAX_REQUEST_BODY_SIZE` | Maximum request body size | `10mb` |
+| `ENABLE_SWAGGER_UI` | Set to `true` to serve `/docs` in deployed modes; enabled by default in development | (disabled in deployed modes) |
 | `key_path` | Path to SSL private key file | (none) |
 | `cert_path` | Path to SSL certificate file | (none) |
 | `DB_USE_WINDOWS_AUTH` | Set to any value to use Windows auth instead of SQL Server auth | (disabled) |

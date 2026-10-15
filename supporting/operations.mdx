@@ -1,0 +1,68 @@
+---
+title: "Operate jobs, reports, uploads, and trackers"
+sidebarTitle: "Operational services"
+description: "Understand background schedules, asynchronous report status, direct S3 uploads, and tracker reporting limits."
+---
+
+These services run outside the main product request paths. Confirm the environment before starting a job or retrying a write. The [source map](/source-map) links the inspected revisions.
+
+## Scheduled data updates
+
+`scheduled_jobs` runs Node.js jobs that synchronize operational data. It requires Node.js 22 or later. Its default weekday schedule is 08:00 in `America/New_York`; individual jobs override it. Culvert runs at 05:00 and its checker at 08:30. The iTop job runs daily at 03:00, with a full run on Sunday, using the process timezone rather than that shared timezone setting.
+
+The overlap guard is an in-memory set in one process. It does not prevent duplicate work across multiple instances. Some jobs log a partial failure and continue. The Cority job advances its watermark only after all required work succeeds.
+
+### Investigate a missed update
+
+1. Identify the job, its own schedule, and the process timezone.
+2. Confirm that the scheduler process was running at that time.
+3. Inspect the job result and partial-failure logs, not just the scheduler's startup message.
+4. Check the last successful watermark where the job uses one.
+5. Agree on the scope of a retry before starting it. A retry can write external systems.
+
+Read `scheduled_jobs/CLAUDE.md` and the current package scripts before development. Offline Jest checks and `test:live` are different paths. Migration scripts mutate external data: review them, apply `001` before `002`, and quote their filename glob. They do not maintain a migration-state table that makes repeats automatically safe.
+
+## News-feed reports
+
+`pip-news-feed-report-service` runs asynchronous reports. Use bearer authentication for protected routes. `POST /runs` accepts the report date and returns `202`; the run status and download routes let a client follow the result. The service also exposes `/healthz`.
+
+1. Submit one run for the intended date.
+2. Save its returned identifier.
+3. Poll its status rather than resubmitting while it works.
+4. Download the stored result when the run is complete.
+5. Check notification records separately if email delivery matters.
+
+A completed run means the report was stored, not that email reached a recipient. Notification retries are capped at three; delivery is not exactly once. Runs older than three hours can be treated as stale. The render path can send email. A dry run can still call paid services and store output, so it is not an offline check.
+
+## Direct S3 uploads
+
+`s3-upload-portal` separates authenticated metadata checks from the file transfer. The client uses `POST /presign`, then sends the file directly to S3 with the returned **POST form fields**. Do not convert that transfer into a presigned PUT.
+
+1. Read `GET /config` for the upload limits.
+2. Read `/warehouses` and `/users/me/primary_warehouse` when choosing a warehouse. A primary-warehouse fallback can be null.
+3. Validate the filename and required terms before asking for a presigned upload.
+4. Send the server's returned form fields and file in a multipart POST to the returned S3 URL.
+5. Check the S3 response and the application's resulting record before retrying.
+
+The filename limit is 255 UTF-8 bytes, not 255 characters. Required terms must be nonempty and cannot contain a slash. File size must be greater than the configured minimum and at most the maximum. A duplicate can return `409`. The server derives uploader identity; do not substitute a user name from client input.
+
+Use the service's offline pytest checks for local validation. Uploading to a real bucket changes external state.
+
+## Edge tracker behavior
+
+`tracker-edge` firmware balances movement reporting and battery life. Its low and critical battery thresholds are 25% and 15%, with two-percentage-point recovery hysteresis. Hysteresis means a small recovery above the entry threshold does not immediately change the mode.
+
+| Mode | Reporting target |
+| --- | --- |
+| External power | Every 15 minutes |
+| Normal battery | After 500 meters of movement, following more than 50 meters of detected motion |
+| Low battery | Every 30 minutes while moving |
+| Critical battery | Every 8 hours |
+
+These are targets, not guaranteed delivery intervals. Connectivity, GPS acquisition, power, and acknowledgements affect delivery. Power detection polls every two seconds and uses separate on/off/lost-power debounce windows of 10/30/6 seconds. The acknowledgement timeout is 60 seconds.
+
+The daily schedule is fixed at 08:00 UTC. Do not describe it as a fixed 03:00 local time: daylight-saving time changes the local equivalent.
+
+## Source reference
+
+Start with the scheduler registry and job modules in `scheduled_jobs`, the run and notification handlers in `pip-news-feed-report-service`, the presign/config handlers in `s3-upload-portal`, and the reporting and power-state logic in `tracker-edge`.

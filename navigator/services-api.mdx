@@ -1,1 +1,97 @@
+---
+title: "Use the ISCO NaviGator API"
+sidebarTitle: "Services API"
+description: "Authenticate, search geographic records, save plans, and manage assigned visits."
+---
 
+## Connect and authenticate
+
+`navigator_services` mounts `src/api/<filename>.ts` at `/api/v1/<filename>` when the server starts. The local default is `http://localhost:4443`.
+
+Every `/api/v1` request passes through Azure JWT validation before body parsing. Send an Azure access token in `Authorization: Bearer <access-token>`. The service requires `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` at startup and validates token signature, audience, and issuer. A Parrot shared API key is not a replacement.
+
+In development, `/docs` serves Swagger UI outside this authentication prefix. Deployed modes (`NODE_ENV=production` or `navigator`) disable it by default; `ENABLE_SWAGGER_UI=true` enables it. Do not expose it unintentionally.
+
+Source: `src/server.ts` and `src/utils/validate_azure_jwt.ts`.
+
+## Search before creating a stop
+
+1. Use `POST /api/v1/entity-search` for text search. Supply `query` with at least three characters.
+2. Add `types` to restrict the search. Supported values are `customers`, `plants`, `projects`, `landfills`, `capProjects`, `opportunities`, and `locationRequests`.
+3. Add `origin: {lat, lon}` to calculate distance and rank results by distance. Add `geoshape` to restrict supported entity types to a region.
+4. Inspect the grouped `data` arrays and select the correct record. The service returns at most 25 results per entity type.
+
+Opportunities do not have the same geographic field as the other entities, so entity-search skips their geographic filter. Do not interpret an opportunity text result as proof that it lies inside your polygon.
+
+Use synthetic values in development, for example:
+
+```json
+{
+  "query": "Example customer",
+  "types": ["customers"],
+  "origin": {"lat": 38.25, "lon": -85.75}
+}
+```
+
+### Sales-stage filters
+
+`salesstage` accepts an array or a comma-separated string. The handlers do not all have the same omitted default:
+
+- Entity-search defaults opportunity results to stages `10` and legacy `13`.
+- Geographic opportunity searches default to stage `10` (Provided Quote).
+- If you explicitly send stages to entity-search, it also limits customers to those with an open opportunity in a supported stage.
+- The customer count fields cover `4` (New Opportunity), `8` (In Design), `9` (Project Bidding), `10` (Provided Quote), `14` (Contractor Awarded), and `16` (PO Pending). Unsupported-only customer stage filters match nothing.
+
+Send your intended stages explicitly instead of relying on a default shared across endpoints. Source: `src/api/entity-search.ts`, `src/api/geo-opportunity.ts`, and `src/utils/sales_stages.ts`.
+
+## Geographic search
+
+These are `POST` routes under `/api/v1`:
+
+| Route | Records |
+| --- | --- |
+| `/geo-customer`, `/geo-coq` | Customers and customer/order/quote geographic data |
+| `/geo-plants`, `/geo-projects` | Industrial plants and projects |
+| `/geo-landfills`, `/geo-capprojects` | Landfills and strategic partnership targets |
+| `/geo-opportunity` | Opportunities; `/by-customer` and `/by-id` provide focused lookups |
+| `/geo-activities` | Recorded activities |
+
+Consult each route's schema before reusing filters. Typical geographic inputs include `lat`, `lon`, `radius`, and a GeoJSON `geoshape`, but limits and response fields vary. GeoJSON coordinate pairs use longitude first.
+
+For `/geo-activities`, supply a customer code, a shape, or latitude and longitude. `customercode` takes precedence over a shape; a shape takes precedence over radius search. Radius defaults to 25 miles. The implemented result size defaults to **10** and is clamped to **1–1000**, despite the older annotation saying 100. The response contains `success`, `data`, `total_activities`, and `query_time_ms`. `total_activities` counts returned records, not every matching record in the index.
+
+## Save a plan or execute activities
+
+Saving an itinerary and assigning visits are different operations.
+
+| Operation | Method and path |
+| --- | --- |
+| Save an itinerary | `POST /api/v1/itinerary` |
+| List a user's saved itineraries | `GET /api/v1/itinerary/:userId` |
+| Read, replace, or delete a saved document | `GET`, `PUT`, or `DELETE /api/v1/itinerary/document/:id` |
+| Load or create itinerary activities | `GET` or `POST /api/v1/activities/itinerary` |
+| Change an activity | `PUT /api/v1/activities/edit/:id` |
+| Add or remove contacts | `POST` or `DELETE /api/v1/activities/contacts` |
+| Add an activity note | `POST /api/v1/activities/note` |
+| Read a series | `GET /api/v1/series` or `GET /api/v1/series/:series_id` |
+| Assign or merge a series | `PUT /api/v1/series/:series_id/assign` or `PUT /api/v1/series/:target_series_id/merge` |
+
+Use the frontend services and route models as the request contract. These write routes can affect other users' work. Do not test them against live visits.
+
+## Supporting route families
+
+- `/settings`: GET, POST, and PUT for user settings.
+- `/entity_metadata`: GET plus PUT/DELETE by entity type and ID for personal metadata.
+- `/location_requests`: POST an address request with its customer context; it is not an immediate customer-master update.
+- `/hubspot`: contact search and CRM changes.
+- `/picklist/customers`, `/employees`, `/sales_regions`: selection data.
+- `/timezone`, `/weather`, `/weather/alerts`: visit-planning context.
+- `/navigator_gamify`: leaderboard GETs and score POSTs for `front-nine`, `hdpe-stack`, `bowling`, and `candlepin`. These are separate from visit completion.
+
+## Troubleshoot
+
+- **401:** confirm this API's access-token audience and tenant, expiry, and the exact `Bearer ` prefix. Do not paste tokens into logs.
+- **CORS error:** align `CORS_ORIGIN` with the frontend origin. It accepts one origin or a comma-separated list.
+- **Empty map:** check layers, shape, recent-date cutoff, sales stages, and result limits before concluding there are no records.
+- **Truncated results:** narrow the area or filters. A result cap is not pagination or a complete population count.
+- **Saved plan does not appear as assigned work:** save and assignment are separate steps. Follow the [user guide](/navigator/user-guide).

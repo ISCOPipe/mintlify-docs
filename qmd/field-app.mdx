@@ -1,1 +1,49 @@
+---
+title: "Capture and upload a QMD joint"
+sidebarTitle: "Field app"
+description: "Follow the Windows field workflow and recover an upload without losing local records."
+---
 
+The QMD field app runs on Windows. It stores joint records locally and sends completed records to the QMD API when connectivity is available. Local capture and server upload are separate steps.
+
+## Before you start
+
+1. Use the approved Windows installation with its device drivers and companion applications.
+2. Confirm the operator, job, machine, transducer, and pipe information for the work.
+3. Check that the required master data is available on the device before working offline.
+4. Follow your approved fusion procedure. This guide explains the software; it does not set welding or safety requirements.
+
+## Capture a joint
+
+1. Enter the job information. The app validates the required job fields before moving to machine information.
+2. Enter the machine information and choose the fusion type.
+3. Complete the fields for that type. The code has separate paths for butt, miter, saddle, different-DR, and dual-containment joints. Do not reuse values from another type without checking them.
+4. Enter the pipe parameters, fusion parameters, and heater measurements required by the selected path.
+5. Review the information on the final review screen before starting the reading process.
+6. Let the configured companion reader complete its work, then review the joint, readings, anomalies, notes, and images.
+
+The review screen launches full-trust companion applications. `ISCO`, `JobSettings`, and `OmegaReading` have different roles in that handoff. A working UWP shell alone does not prove that device capture is configured. See [setup](/qmd/setup).
+
+## Upload completed work
+
+1. Restore connectivity to the configured QMD API.
+2. Open **Previous Joints**. The list places unuploaded records first. The icons distinguish uploaded status and the presence of anomalies.
+3. Start the upload action and let it finish. If the app says records are uploading in the background, wait before trying again.
+4. Check the joint's uploaded state and confirm that the record appears in the [web portal](/qmd/web-portal).
+5. Check any later notes or images separately. The app has a separate upload path for additions to an existing central joint.
+
+The pending-joint uploader requires device readings before it sends a new joint. A local record with no readings is not equivalent to a completed joint ready for upload.
+
+## Recover a stalled upload
+
+- Keep the app's local database and original records. Do not reset the app or delete a joint to clear an upload message.
+- Check network access, the API base URL, and token errors. Use the [API health check](/qmd/api) to distinguish web/database failures from connectivity.
+- Reopen the upload view and allow the app's recovery logic to run. It can reset an uploading marker older than one minute; that does not establish whether the server accepted an earlier request.
+- Check the central joint before repeating a submission that may already have succeeded.
+- Record the local joint identifier, time, and error for support. Do not include credentials or customer payloads in logs shared outside the approved support channel.
+
+The app also has an XML export path. Treat an exported file as a recovery artifact, not proof of a completed server upload. Ask support which import path applies before using it.
+
+## Source reference
+
+The capture sequence starts in `Isco_UWPApp/JobInformation.xaml.cs`, `FusionType.xaml.cs`, and `FinalReview.xaml.cs`. Local ordering, upload state, pending-joint and note uploads, and XML export are in `Isco_UWPApp/PreviousJoints.xaml.cs`. See the [source map](/source-map) for the inspected revision.

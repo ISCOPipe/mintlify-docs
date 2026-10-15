@@ -1,1 +1,49 @@
+---
+title: "Review QMD records in the web portal"
+sidebarTitle: "Web portal"
+description: "Find uploaded joints, inspect quality information, and export the records you intend to share."
+---
 
+The QMD web portal is the ASP.NET MVC application in `qmd_weld_app_web/ISCOWeb.sln`. It presents uploaded field records. It is not the Windows device-reading application.
+
+## Sign in and find your workspace
+
+Sign in through your organization's approved portal URL. Your role affects the page you reach and the locations you can review. The account controller redirects the FieldTech role to the upload portal. Plant-manager joint queries apply location filtering.
+
+If a record is missing, check the selected location and filters before asking the operator to upload it again. A role or location restriction can hide an uploaded record.
+
+## Review a joint
+
+1. Open the joint-review area.
+2. Set the available date, location, operator, and job filters for the record you need.
+3. Select the joint and verify its identity before reviewing results.
+4. Inspect the pressure chart, timings, anomaly information, notes, and images available for that record.
+5. Compare the displayed information with the approved review process. An upload or a chart does not itself certify a joint.
+
+The joint-review controller includes Excel and PDF exports, chart data, and image retrieval. It also includes actions that modify records. Do not call a batch action as a read-only diagnostic.
+
+## Export the intended records
+
+1. Apply and check the filters before exporting.
+2. Choose the available Excel or PDF export.
+3. Inspect the exported file for the expected joints and fields.
+4. Share it only through an approved channel. Joint reports can contain operational and customer information.
+
+An export is a copy at that point in time. It does not update the field device or replace the original server records.
+
+## Upload portal and calibration
+
+The FieldTech upload portal processes uploaded files. Do not confuse it with the Windows app's API upload. In the inspected code, the upload page has a FieldTech role attribute, but its `UploadFiles` action does not declare the same action-level attribute. Do not infer server-side upload protection from the page's visibility.
+
+Calibration pages restrict access to the `Admin`, `Director`, `PlantManager`, and `ITAdmin` roles. They expose equipment-reading workflows; confirm the transducer and reference gauge before entering results. This documentation does not define calibration acceptance limits.
+
+## Troubleshoot missing or incomplete information
+
+- **Joint absent:** check filters, location permissions, and the field app's upload state.
+- **Chart or images absent:** confirm that the relevant readings or attachments reached the server; do not assume the joint summary proves every related item uploaded.
+- **Unexpected access:** report the exact action and role to the application owner. UI restrictions and action authorization are not interchangeable.
+- **API dependency error:** use the [QMD API health guide](/qmd/api), including its response-body checks.
+
+## Source reference
+
+See `ISCOWeb/Controllers/AccountController.cs`, `JointReviewController.cs`, `UploadPortalController.cs`, and `CalibrationController.cs`. The [source map](/source-map) records the inspected branch and revision.

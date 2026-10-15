@@ -1,0 +1,65 @@
+---
+title: "Work with rental and quality records"
+sidebarTitle: "Rental and quality workflows"
+description: "Read rental metrics, create process-related NCRs, and record structure tests without confusing reports with approvals."
+---
+
+## Before you start
+
+Sign in to Pipeline and open the page through your authorized navigation. A missing menu item or an access-denied message can mean your role does not allow that page. Do not work around access checks by calling a handler directly.
+
+## Read the rental dashboard
+
+1. Open the **Rental Dashboard** (`rental/rental_dashboard.php`).
+2. Confirm the company and team context before comparing figures. The page uses your sales-team context and company selection.
+3. Open the filter control to choose a **Market Type**, then select **Search**. Use **Clear Filter** to remove it.
+4. In **Equipment Revenue**, switch between **Rental**, **Used**, and **New** rather than treating them as one category.
+5. Review availability, utilization, and revenue together. A machine can be unavailable because it is down, not because it is on rent.
+6. If a card stays blank or shows an error, check its request before treating the result as zero.
+
+The page conditionally shows sections for different team contexts. The growth-to-goal section appears for the **Everything** and **Sales Support** contexts in the inspected page. API routes also supply open shop-order and growth-to-goal summaries; their existence does not mean every user sees every card.
+
+For integration details and company filters, see [rental API reads](/pipeline/services/endpoints#rental-dashboard-reads).
+
+## Create a process-related NCR
+
+An NCR is a nonconformance report. It records an issue and the follow-up information needed to review it; creating a report does not close it.
+
+1. Open the NCR form (`ncr/ncr_form.php`). Complete the required issue, source, action, and requirement fields shown for your case.
+2. For a product-related issue, add the condition rows that identify the affected product or order.
+3. If the issue is process-related, select **Is this process related?**. The form displays the current process disclaimer and **Yes**/**No** choices.
+4. Read the displayed text and record the response that applies. The disclaimer is maintained in the application; do not substitute text from an old screenshot or guide.
+5. Review validation messages, then confirm submission.
+
+Selecting the process-related option removes the form's condition-row requirement and makes its EOC field optional. Clearing it hides the disclaimer section and clears its radio selection. This is a form behavior, not a statement that process issues need no evidence.
+
+### Review and close an NCR
+
+1. Open the saved NCR and complete the required header, costs, investigation, and related records.
+2. For a non-process report, add at least one related product/order. The detail form exempts process-related reports from that product-row check.
+3. Complete other case-specific requirements. A linked PRA must be closed before the NCR closure flow continues.
+4. Run closure validation and read its result. The page starts a closure-review workflow; do not assume clicking the button alone finished review.
+5. Use the NCR report's **Process Related** and **Process Related Disclaimer** filters to find the applicable records. These values are also included in the EOC export.
+
+Source: `ncr/ncr_form.php`, `ncr/ncr_detail.php`, `ncr/ncr_report.php`, and `ncr/eoc_export.php`.
+
+## Record a structure test and repair
+
+1. Confirm the company, warehouse, work order, bill of material, and work-order quantity.
+2. Enter each test's medium, duration, date, tester, and pass/fail result. Air tests also need pressure.
+3. Use a real calendar date, not a timestamp or an impossible date such as February 30.
+4. If the initial test fails, record the repair and retest. The API supports an inline retest when the repair already happened; it does not accept an inline retest on an initial passing test.
+5. Check the saved history and follow-up activity. A passing retest closes the linked retest activity. A failure leaves follow-up work to resolve.
+
+Do not submit an extra initial test to represent a retest. The initial-test route checks work-order quantity and the retest route maintains the repair history. See the [quality API contract](/pipeline/services/endpoints#create-structure-tests-and-retests).
+
+## Investigate a McElroy return
+
+The McElroy RMA dashboard is a separate reporting workflow from structure tests. Its service supports text search, typeahead, facets, aggregates, trends, statistics, and record detail. Start with a search, narrow the facets, then open the record before drawing conclusions from an aggregate. The relevant service source is `services_hot_reload/src/api/mcelroy_rma.ts`.
+
+## If a result looks wrong
+
+- Recheck company, team, date range, and report filters before comparing two pages.
+- Separate a failed API call from an empty result.
+- Preserve the NCR or test identifier and the error message when asking for help. Do not include credentials or customer payloads.
+- Avoid repeatedly submitting a write after a network error. First check whether the record was created.

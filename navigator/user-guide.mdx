@@ -1,5 +1,5 @@
 ---
-title: "Plan and Execute Trips with NaviGator"
+title: "Plan and execute trips with ISCO NaviGator"
 sidebarTitle: "User Guide"
 description: "Step-by-step guide for sales reps and managers using ISCO NaviGator to build itineraries, assign activities, and close out stops in the field."
 ---
@@ -12,7 +12,7 @@ This guide is grounded in the actual onboarding tour (`src/tour/onboardingTour.t
 
 ### 1. Load Nearby Places
 
-Open the app and press **Search Area** (desktop header or mobile actions menu). The app queries the Navigator Services API for every customer, plant, project, landfill, capital project, and opportunity inside the current map viewport. Results appear as colored pins on the map and as scrollable cards in the side panel.
+Open the app and press **Search Area** (desktop header or mobile actions menu). The app queries the Navigator Services API for enabled geographic layers inside the current map viewport. Filters and result limits can exclude records; the map does not guarantee that every matching record is displayed. Results appear as colored pins on the map and as cards in the side panel.
 
 - **Customers**: blue pins
 - **Plants**: green pins
@@ -109,7 +109,27 @@ Every edit to an activity-backed stop (`wfactId` set) writes through to the back
 
 The mobile **Itinerary** tab uses `UnifiedStopCard` with `executeOnly={false}`, so it supports both planning and execution in one card. The desktop right panel uses `executeOnly={true}` when rendering assigned activities, hiding planning-only controls like the stop name editor.
 
-## Onboarding Tour
+## Add a point of interest
+
+A point of interest (POI) is a named place from address search, such as a business or venue. It is not automatically an ISCO customer.
+
+1. Search for the place and select its POI result.
+2. In **Add a Location**, wait for the nearby-record check to finish. You cannot save while it is running.
+3. Review **Use as stop basis**. The app searches within **500 meters** and shows candidate distances in rounded feet.
+4. Keep the POI, or select a nearby customer, plant, project, landfill, strategic partnership, or opportunity. A selected ISCO record supplies its own identity and coordinates instead of the POI.
+5. If you keep the POI, enter a location name. You can also select a customer, contact, and reason for the stop.
+6. To request a customer address update, select a customer and an address-request type. This submits a request; it does not immediately update the customer master record.
+7. Save the location, then continue planning the trip.
+
+If no nearby records are found, you can keep the POI. If the check fails, the app tells you and still lets you use the POI. Do not assume a failed search proved there are no matching records.
+
+## Control map results
+
+Use settings to choose opportunity stages: New Opportunity, In Design, Project Bidding, Provided Quote, Contractor Awarded, and PO Pending. Customer filtering by opportunity stage is a separate option; showing an opportunity layer does not necessarily narrow customer pins.
+
+If results appear incomplete, narrow the area and review enabled layers, stages, and recent-date filters. The API caps result sets; `/geo-activities` accepts at most 1000 activities per request. See [API search constraints](/navigator/services-api).
+
+## Onboarding tour
 
 New users can launch the guided tour from **Settings > Advanced > Replay Tutorial**. The tour (`src/tour/onboardingTour.ts`) walks through:
 

@@ -123,6 +123,18 @@ The application reads from `App.config`:
 | `iscorelease120718Entities` | Entity Framework connection string for the QMD model. |
 | `Constr` | Plain ADO.NET connection string used for direct `SqlCommand` execution. |
 
+## Calibration-check reminders
+
+The API repository also contains `Projects/IscoCallCheckReminder/IscoCallCheckReminder`. This Windows service checks every 10 seconds. It sends the transducer-check reminder on the day seven days before the last day of the month, using the server's local date.
+
+The reminder queries transducers that lack the required check. A missing date appears as **Never**. Recipients come from the service's location/user query. Configure `IscoConnection`, the `MailServer*` settings, `FromAddress`, `SSL`, and the logo setting for that service's deployment.
+
+<Warning>
+Do not rely on this service for exactly-once delivery. Its log update has no `WHERE` clause, it resets the reminder log outside the selected day, and its mail sender catches SMTP exceptions. A recorded attempt does not prove that a recipient received an email. Repeated manual starts can change shared log state.
+</Warning>
+
+When a reminder is missing, check the server's local date, unchecked-transducer results, recipient query, database log, and mail-provider records. Do not run the service against production merely to test its configuration.
+
 ## Event logging
 
 All Windows services write to the Windows Event Log:

@@ -1,10 +1,10 @@
 ---
 title: "Pipeline Services API: Node/TypeScript backend for ISCO data services"
 sidebarTitle: "Overview"
-description: "The Pipeline Services API is a hot-reloadable Node/TypeScript Express server that exposes REST endpoints and WebSockets for ISCO's intranet, QMD, Navigator, and external integrations."
+description: "Understand Pipeline's Node/TypeScript integration API and distinguish it from the dedicated QMD and ISCO NaviGator backends."
 ---
 
-The Pipeline Services API (repo: `services_hot_reload`) is a hot-reloadable Node/TypeScript Express server that exposes REST endpoints and WebSockets for ISCO's intranet, QMD, Navigator, and external integrations. It connects to SQL Server, Elasticsearch, AWS S3, HubSpot, SendGrid, and other third-party services, and dynamically loads route files from `src/api/` so new services appear without restarting the server.
+The Pipeline Services API (repo: `services_hot_reload`) is a Node/TypeScript Express server for intranet data and integrations. It connects to SQL Server, Elasticsearch, AWS S3, HubSpot, SendGrid, and other services. It loads route files from `src/api/` when the process starts. Development uses automatic process restarts; production changes need a build and process reload. QMD and ISCO NaviGator also have dedicated APIs; do not substitute this service for those backends.
 
 ## Stack and runtime
 
@@ -64,8 +64,8 @@ The API covers a broad set of ISCO business domains. Key route families include:
 ## Who calls it
 
 - **Pipeline intranet** (PHP/React frontend): the primary consumer of the REST API.
-- **QMD field app and web portal**: reads and writes weld data through dedicated endpoints.
-- **Navigator PWA**: uses services for itinerary and dashboard data.
+- **ISCO NaviGator dashboards in Pipeline**: use reporting endpoints such as `navigator_dashboard.ts`. The PWA's primary backend is `navigator_services`.
+- **QMD integrations**: distinguish any shared intranet service from the dedicated ASP.NET QMD API.
 - **External integrations**: HubSpot sync, Azure DevOps lookups, email delivery, and AWS S3 file operations.
 - **Internal automation**: smoke tests, scheduled jobs, and CI health checks hit `/api/v1/health` and `/api/v1/health/smoketest`.
 

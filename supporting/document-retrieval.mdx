@@ -1,0 +1,56 @@
+---
+title: "Trace document ingestion and retrieval"
+sidebarTitle: "Document retrieval"
+description: "Understand the SharePoint ingestion path, search services, and the limits of retry and retirement behavior."
+---
+
+These repositories support document retrieval and AI experiments. They do not form one interchangeable API. Identify the service and inspected revision in the [source map](/source-map) before changing a client.
+
+## Follow a document through ingestion
+
+1. `pipeline-agent-etl-scanner` scans SharePoint on an hourly schedule and copies changed files to S3.
+2. The scanner queues parsing work. Its inspected code forces its test flag to `false`; do not assume a local invocation is a dry run.
+3. `pipeline-agent-etl` processes the FIFO queue with a batch size of one.
+4. A parser extracts text from supported PDF, DOCX, PPTX, XLSX, CSV, or HTML files.
+5. The worker splits text into chunks and writes the document's records in a database transaction. The normal chunk target is 300 tokens, with a 150-token tail threshold.
+6. Retrieval services search the active records. Removal events retire a document rather than treating it as current content.
+
+## Understand replacement and failure behavior
+
+A document write has a transaction and rollback, but retirement of old content occurs separately before parsing the replacement. Do not describe the whole replacement as atomic: a failed replacement can leave the old content retired.
+
+The SQS handler catches some processing exceptions and returns an error value. That is not the same as raising a Lambda failure. Do not assume that every failed parse reaches the dead-letter queue.
+
+The recorded applied queue configuration uses a visibility timeout of 1,800 seconds and a maximum receive count of one. The repository's alarm proposal numbered `003` is a proposal, not evidence that its alarms are deployed. Check the actual environment before relying on either configuration.
+
+## Investigate a failed ingestion
+
+1. Identify the source file and its S3 event without sharing its contents.
+2. Check scanner, queue, and worker logs for the same object.
+3. Check whether old content is retired and whether new chunks were committed.
+4. Inspect the dead-letter queue only after confirming the queue URL, AWS profile, and environment.
+5. Read the inspection script before running it. It receives at most ten messages with a 30-second visibility period; receiving temporarily hides messages.
+6. Do not use its `--delete` option during diagnosis. Deletion changes the queue and can remove recovery evidence.
+
+A queue inspection is not a replay. Agree on a recovery action before re-enqueuing or deleting work.
+
+## Choose the retrieval component
+
+| Repository | Role | Important limit |
+| --- | --- | --- |
+| `pipeline-agent-bm25-search` | Keyword retrieval through `POST /bm25_search` | Excludes retired chunks; its in-memory search data refreshes every 15 minutes |
+| `pipeline-agent-experiments-km` | Experimental hybrid retrieval with keyword search and reciprocal-rank fusion | `backend/app.py` is commented out; this is not evidence of a running HTTP API |
+| `pipeline-agent-km` | Query, chunk, contradiction, and mutation endpoints | Inspect the active app's API-key and CORS handling; mutations are not read-only checks |
+| `pipeline-agent-experiments-endpoint` | Memoryless and conversational answer endpoints | Conversational mode forces speculation, reranking, Markdown, and citations on |
+| `pipeline-agent-experiments-llm` | Provider adapter | A null message becomes an empty string with a warning; provider errors are raised again |
+| `pipeline-agent-nli-model-deploy` | DeBERTa natural-language inference | Returns contradiction, entailment, or neutral; its gRPC server uses an insecure channel on port `50051` |
+
+Keep the NLI service on the intended internal network. A model's label or a generated citation is not a guarantee that an answer is correct. Check the retrieved source and whether it is still active.
+
+## Safe development boundary
+
+Use offline fixtures and the repository's unit checks before integration testing. Scanner runs, ingestion, chunk mutation, provider calls, and infrastructure scripts can change data or incur charges. Do not run them merely to validate documentation.
+
+## Source reference
+
+Start with the scanner entry point, the ETL SQS handlers and parser modules, and each service's active application entry point. Hybrid filtering is implemented in `pipeline-agent-experiments-km/backend/services/stores/vector_store/prod_store.py`; the active knowledge-management application is `pipeline-agent-km/pipeline-agent-km/app.py`.

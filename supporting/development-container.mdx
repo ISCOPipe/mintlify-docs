@@ -1,0 +1,37 @@
+---
+title: "Use the Pipeline development container"
+sidebarTitle: "Development container"
+description: "Understand the Linux container toolchain, host integration, and limits before starting Pipeline locally."
+---
+
+`pipeline-container` packages a Linux development environment for Pipeline. It complements the [Windows setup](/pipeline/local-setup); it does not establish that every Windows integration runs unchanged on Linux.
+
+## What the image provides
+
+The inspected image uses Ubuntu 22.04, PHP 8.3, and Node.js 22.23.2. It includes the PHP and Node tooling needed by its development startup. The startup can run Composer and npm work concurrently; wait for both results before treating the environment as ready.
+
+The container maps the developer's UID and GID for mounted files. Apache starts with a root master process and drops privileges for its workers. Do not call the entire image rootless.
+
+The startup exposes the read-only host mount through a `/mnt/t_ro` link. Keep shared source data read-only and write generated development files only to the intended writable mounts.
+
+## Start a local environment
+
+1. Read the current `pipeline-container` README and Compose configuration.
+2. Follow its WSL setup when running from Windows. Enable the required Docker/WSL integration before starting the container.
+3. Place the Pipeline checkout and approved local configuration at the mount paths that Compose expects.
+4. Configure host identity mapping and development authentication, including Kerberos where your environment requires it.
+5. Start the documented development service and inspect Composer, npm, and Apache logs separately.
+6. Open the forwarded development site. The documented VS Code path uses `localhost:8080`; check your Compose port mapping if that address differs.
+7. Build the React code with Pipeline's documented `npm run compile:react` command before checking a changed bundle.
+
+A running container is not proof of database access, Kerberos success, or a valid Pipeline session. Check each dependency independently.
+
+## Troubleshoot the boundary
+
+- **File permissions:** check UID/GID mapping before changing permissions on the host checkout.
+- **Missing shared files:** check mount availability and the read-only link rather than copying production files into the image.
+- **No data:** confirm network access and environment-specific connection includes.
+- **Stale React UI:** confirm the bundle compilation succeeded and that the page references the rebuilt artifact.
+- **Conflicting instructions:** use the current Dockerfile and startup scripts for installed behavior. Older README references to APM do not prove that APM remains in the image.
+
+Do not run deployments or reuse production credentials to test the container. See the [source map](/source-map) for the inspected revision.

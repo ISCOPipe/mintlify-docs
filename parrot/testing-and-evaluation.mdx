@@ -8,7 +8,7 @@ Parrot ships with a comprehensive test suite for the matching pipeline, an eval 
 
 ## Test suite
 
-The `tests/` directory contains unit and integration tests for every major subsystem. Run the full suite with pytest, or run individual test files directly.
+The repository-root `tests/` directory contains unit and integration tests for the worker application in `quote_builder/`. Run commands from the repository root. Inspect the selected test's fixtures, mocks, and provider calls first; the full suite is not a guarantee of offline execution. Evaluation, GUI, and worker simulations can call paid providers or persist results. The eval `--dry-run` flag skips its Elasticsearch write, not model processing.
 
 ```bash
 # Run all tests

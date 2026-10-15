@@ -19,6 +19,17 @@ Access is gated by Pipeline role IDs defined in `inc/roles.php`:
 
 Each PHP entry page checks the user's `$role_id_list` against an `$allowed_role_ids` array and exits with "Access Denied" if there is no intersection. The React app receives `data-user_role_ids` from the PHP wrapper so the UI can also gate features (for example, the debug-mode "Show API Results" button is shown only when role IDs include 1, 36, or 67).
 
+## Complete a quote safely
+
+1. Open Parrot for the correct customer or team and select **New Job**.
+2. Upload the request files and wait until the job succeeds. **Succeeded** means processing finished, not that every match is correct.
+3. Open the job and compare each extracted line with the original document. Check missing rows, quantity, unit of measure, size, and material.
+4. Review the suggested products. Select a better candidate or search when the first suggestion is wrong. Mark a line as unmatched only after checking it.
+5. Recheck saved selections after reloading, especially MISC parts. Two candidates can share a part code but have different descriptions; the saved description is part of the selection you must verify.
+6. Confirm the header, warehouses, sell quantities, and units before exporting. Record the returned Prelude quote ID so you can distinguish an exported quote from a merely completed review.
+
+If a request fails during export, check the job's export state before trying again. Do not create duplicate jobs or quotes just to clear a network error.
+
 ## Entry points
 
 There are three PHP pages that mount the same React bundle (`/dist/quote_builder.js`) with different initial screens and data payloads.
@@ -81,7 +92,7 @@ A lock icon appears when another user holds the edit lock (`locked_by`).
 
 For jobs that are not yet exported, the **Export Status** column shows:
 
-- A progress bar with `pendingCount / lineCount` and a percentage.
+- A progress bar based on reviewed lines (confirmed plus no-match) divided by total lines.
 - "Ready for export" badge when every line is confirmed or marked no-match.
 - "Quote XXX-XXXXX" once exported, with the `prelude_quote_id` formatted as `###-#####`.
 
