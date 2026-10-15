@@ -1,10 +1,10 @@
 ---
-title: "Parrot: AI quote builder that matches RFQs to product lines"
+title: "Parrot: AI quote builder that matches RFQs to ISCO product lines"
 sidebarTitle: "Overview"
-description: "Parrot turns customer RFQ documents into matched ISCO product lines. Learn how its Pipeline UI, orchestration API, and AWS worker fit together."
+description: "Parrot turns customer RFQ documents into matched ISCO product lines. Learn how its Pipeline UI, orchestration API, and AWS worker fit together, the end-to-end job lifecycle, and the AWS and external services they depend on."
 ---
 
-Parrot is ISCO's AI quote builder. Sales users upload a customer request for quote (PDF, spreadsheet, or email), and Parrot extracts the requested items, matches each one to ISCO catalog products, and returns lines that the team reviews and exports.
+Parrot is ISCO's AI quote builder. Sales users upload a customer request for quote (PDF, spreadsheet, email, or image), and Parrot extracts the requested items, matches each one to ISCO catalog products, and returns lines that the team reviews and exports into Prelude.
 
 ## Components
 
@@ -14,38 +14,122 @@ Parrot is ISCO's AI quote builder. Sales users upload a customer request for quo
 | Orchestration API | `iscopipe/quote_builder_orchestration` | Chalice apps on AWS Lambda: a frontend contract for the UI and a service contract for worker callbacks |
 | Worker | `iscopipe/quote_builder_aws` | SQS-triggered Chalice Lambda (`quote-builder-worker`) that runs the matching pipeline |
 
-## How a job flows
+## End-to-end job lifecycle
 
-<Steps>
-  <Step title="Upload">
-    A user uploads an RFQ in Pipeline. The UI calls the orchestration frontend API, which stores the job and dispatches it to SQS.
-  </Step>
-  <Step title="Process">
-    The worker ingests the file (documents are converted to Markdown with Cloudflare Workers AI; `.eml`, `.msg`, and `.xlsx` are parsed directly), then extracts, structures, and cleans line items with LLMs through OpenRouter.
-  </Step>
-  <Step title="Match">
-    Each line goes through structured Elasticsearch search against the product catalog, Cohere reranking, LLM match selection, and validation.
-  </Step>
-  <Step title="Return">
-    The worker reports results to the orchestration service API, and users review, give feedback on, and export the matched lines in Pipeline.
-  </Step>
-</Steps>
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Sales user
+    participant Pipeline as Pipeline React UI
+    participant Orch as Orchestration API
+    participant SQS as SQS (parrot-job-dispatch)
+    participant Worker as Worker Lambda
+    participant ES as Elasticsearch (catsy_data_scheduled_jobs)
+    participant S3 as S3 (uploads/results)
+    participant OrchS as Orchestration Service API
 
-## AWS resources
+    User->>Pipeline: Upload RFQ file(s)
+    Pipeline->>Orch: POST /v1/jobs (metadata + files)
+    Orch->>S3: Presigned PUT URLs
+    Pipeline->>S3: Upload file(s) directly
+    Pipeline->>Orch: POST /v1/jobs/{job_id}/submit
+    Orch->>SQS: Dispatch job message
+    SQS->>Worker: Trigger Lambda (batch_size=1)
+    Worker->>Orch: Claim: conditional DynamoDB update QUEUED->RUNNING
+    Worker->>S3: Download input file(s)
+    Worker->>Worker: Run pipeline (ingest -> extract -> match -> validate)
+    Worker->>ES: Structured catalog search + rerank
+    Worker->>OrchS: POST /internal/jobs/{job_id}/status (progress heartbeats)
+    Worker->>S3: PUT results/{job_id}/result.json
+    Worker->>OrchS: POST /internal/jobs/{job_id}/complete (S2 lines)
+    OrchS->>Orch: Update job status -> SUCCEEDED
+    Pipeline->>Orch: GET /v1/jobs/{job_id} (poll / refresh)
+    User->>Pipeline: Review lines, confirm/correct matches, export to Prelude
+```
 
-- **SSM Parameter Store**: configuration under `/parrot/` (prod) and `/parrot/dev/` (dev)
-- **SQS**: `parrot-job-dispatch` and `parrot-job-dispatch-dev`
-- **DynamoDB**: `parrot-jobs`, `parrot-jobs-v2`, and their `-dev` counterparts
-- **S3**: job file storage
+## AWS resources by stage
 
-## Access
+### Orchestration layer (`quote_builder_orchestration`)
 
-Parrot pages in Pipeline require the `PARROT_TESTER` (67) or `PARROT_TEAM` (73) role, defined in `inc/roles.php`.
+| Resource | Dev | Prod | Purpose |
+| --- | --- | --- | --- |
+| Lambda (frontend contract) | `orchestration-frontend-contract` | same | Public API for Pipeline UI |
+| Lambda (service contract) | `orchestration-service-contract` | same | Internal API for worker callbacks |
+| DynamoDB | `parrot-jobs-dev-v2` | `parrot-jobs-v2` | Single-table design: `job_id` PK, `sk` SK |
+| SQS | `parrot-job-dispatch-dev` | `parrot-job-dispatch` | Worker trigger queue |
+| S3 | Dev uploads bucket | Prod uploads bucket | Input files + result JSON |
+| SSM prefix | `/parrot/dev/` | `/parrot/` | Config, API keys, DB names |
 
-## Contribution conventions
+### Worker layer (`quote_builder_aws`)
 
-From the worker repo's `AGENTS.md`:
+| Resource | Dev | Prod | Purpose |
+| --- | --- | --- | --- |
+| Lambda | `quote-builder-worker` | same | SQS-triggered pipeline runner |
+| DynamoDB | `parrot-jobs-dev-v2` | `parrot-jobs-v2` | Job claim + progress writes (dev mode) |
+| S3 | Dev uploads/results bucket | Prod uploads/results bucket | File I/O |
+| SSM prefix | `/parrot/dev/` | `/parrot/` | API keys, ES URL, Kore credentials |
 
-- Create an Azure DevOps work item in `ISCO-PIPE / Pipeline` titled `Parrot - <Area> - <description>`, parented to the right Feature.
-- Name branches `feat/<work-item-id>-<slug>`.
-- Use conventional commit messages.
+## External services
+
+| Service | Used by | How |
+| --- | --- | --- |
+| **OpenRouter** | Worker (`chalicelib/llm/openrouter.py`) | LLM calls for extraction, segmentation, filtering, match selection, context resolution, validation. Default model: `google/gemini-3-flash-preview`. |
+| **Cohere** | Worker (`chalicelib/llm/cohere_rerank.py`) | Rerank v2 API for semantic re-scoring of Elasticsearch candidates. |
+| **Cloudflare Workers AI** | Worker (`chalicelib/llm/cloudflare_markdown.py`) | Document-to-Markdown conversion for PDF, DOCX, images, and spreadsheets. |
+| **Elasticsearch** | Worker (`chalicelib/pipeline/match/search/catalog_es.py`) | Structured bool queries against `catsy_data_scheduled_jobs` index for product catalog search. |
+| **Pipeline Services API** | Worker + Orchestration | `https://pathfinder.isco-pipe.com:4443/api/v1/product_lookup/search` for part lookup; picklists for Prelude header fields. |
+| **Kore API** | Orchestration frontend | Export confirmed lines to Prelude as quotes. |
+| **Azure DevOps** | Orchestration frontend | Feedback submissions create work items in `ISCO-PIPE / Pipeline`. |
+
+## Pipeline stages (what the worker does)
+
+The worker chains decomposed tools in `chalicelib/pipeline/runner.py`. The exact order depends on file type:
+
+1. **Ingest** — Cloudflare markdown (primary) or legacy parsers for `.xlsx`, `.eml`, `.msg`, `.txt`
+2. **Translate** — Language detection and translation (non-English RFQs)
+3. **Detect mode** — Structured vs unstructured document classification
+4. **Segment** — LLM splits unstructured text into candidate lines
+5. **Extract** — Regex gate + LLM noise rescue produces raw product lines
+6. **Structure** — LLM normalizes lines into structured fields (description, qty, UOM)
+7. **Filter** — LLM relevance check removes non-product lines
+8. **Search** — Elasticsearch structured bool queries (tiered strategies: size+category, size, text-only)
+9. **Rerank** — Cohere re-scores top candidates semantically
+10. **Select** — LLM picks best match per line (+ escalation model on retry)
+11. **Resolve context** — Cross-line disambiguation and second-pass for ambiguous matches
+12. **Confirm** — Match confirmation with confidence boosting/squashing
+13. **UOM inference** — Fills missing units of measure
+14. **Junk filter** — Low-confidence removal
+15. **Validate** — Schema and quality checks
+16. **Normalize** — Rank-discount confidence normalization for S2 payload
+
+## Access control
+
+Parrot pages in Pipeline require the `PARROT_TESTER` (67) or `PARROT_TEAM` (73) role, defined in `inc/roles.php`. The React app receives `data-user_role_ids` from the PHP wrapper and gates debug features (like "Show API Results") to roles 1, 36, or 67.
+
+## Explore Parrot
+
+<CardGroup cols={2}>
+  <Card title="User Guide" icon="book-open" href="/parrot/user-guide">
+    How sales staff upload, review, and export quotes in Pipeline.
+  </Card>
+
+  <Card title="Matching Pipeline" icon="diagram-project" href="/parrot/matching-pipeline">
+    Deep dive into the extraction, search, rerank, and match-selection stages.
+  </Card>
+
+  <Card title="Worker Setup" icon="server" href="/parrot/worker-setup">
+    Clone, configure, and run the worker locally with uv and Python 3.12.
+  </Card>
+
+  <Card title="Orchestration Setup" icon="cloud" href="/parrot/orchestration-setup">
+    Set up and deploy the orchestration layer (frontend + service contracts).
+  </Card>
+
+  <Card title="Orchestration API" icon="code" href="/parrot/orchestration-api">
+    Complete endpoint reference for the public and internal APIs.
+  </Card>
+
+  <Card title="Testing & Evaluation" icon="vial" href="/parrot/testing-and-evaluation">
+    Run the eval harness, frozen sets, and GUI against local fixtures.
+  </Card>
+</CardGroup>

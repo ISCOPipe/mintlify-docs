@@ -1,1 +1,149 @@
+---
+title: "Parrot worker configuration reference"
+sidebarTitle: "Configuration"
+description: "Complete reference for Parrot worker environment variables, Chalice stage config, SSM parameters, IAM policies, and AWS resources."
+---
 
+The Parrot worker is configured through a stack of layers: `.chalice/config.json` per-stage defaults, AWS SSM Parameter Store secrets, and local `.env` overrides. This page documents every tunable.
+
+<Warning>
+  The repository contains committed secrets (API keys, AWS credentials, connection strings). Never copy secret values into the docs or commit them. Use a local `.env` file and the team's secret store for real values.
+</Warning>
+
+## Chalice stage configuration
+
+`quote_builder/.chalice/config.json` defines two stages: `dev` and `prod`.
+
+| Field | Dev | Prod |
+| --- | --- | --- |
+| `api_gateway_stage` | `v1` | `v1` |
+| `automatic_layer` | `true` | `true` |
+| `autogen_policy` | `false` | `false` |
+| `iam_policy_file` | `policy-dev.json` | `policy-prod.json` |
+| `security_group_ids` | `sg-0b3faeef88c27c746` | `sg-0b3faeef88c27c746` |
+| `subnet_ids` | `subnet-0d37f2507aacfe8a6` | `subnet-0d37f2507aacfe8a6` |
+| `lambda_timeout` | `900` | `900` |
+| `lambda_memory_size` | `512` | `512` |
+| `tags.project` | `parrot` | `parrot` |
+| `tags.env` | `dev` | `prod` |
+
+### Per-stage environment variables
+
+| Variable | Dev | Prod |
+| --- | --- | --- |
+| `SSM_PREFIX` | `/parrot/dev/` | `/parrot/` |
+| `PARROT_API_VERSION` | `v2` | `v2` |
+| `JOBS_TABLE` | `parrot-jobs-dev` | `parrot-jobs` |
+| `JOBS_TABLE_V2` | `parrot-jobs-dev-v2` | `parrot-jobs-v2` |
+| `DISPATCH_QUEUE` | `parrot-job-dispatch-dev` | `parrot-job-dispatch` |
+| `OPENROUTER_MODEL` | `google/gemini-3-flash-preview` | `google/gemini-3-flash-preview` |
+| `PART_LOOKUP_URL` | `https://pathfinder.isco-pipe.com:4443/api/v1/product_lookup/search` | `https://pathfinder.isco-pipe.com:4443/api/v1/product_lookup/search` |
+| `QUOTE_BUILDER_IMAGE_INGEST` | `1` | `1` |
+| `LOG_LEVEL` | `DEBUG` | `INFO` |
+| `JOBS_BUCKET` | `""` | `""` |
+| `ORCHESTRATION_API_URL` | `""` | `""` |
+| `OPENROUTER_API_KEY` | `""` | `""` |
+
+Empty string values for secrets and the orchestration URL are backfilled from SSM at cold start by `SSMConfig.inject_env_vars()`.
+
+## SSM parameter names
+
+`chalicelib/aws/ssm_config.py` defines the parameter map. Stage-scoped keys are read from the stage prefix (e.g. `/parrot/dev/`); all others are read from the base `/parrot/` path.
+
+| SSM key | Env fallback | Default | Scope |
+| --- | --- | --- | --- |
+| `api-version` | `PARROT_API_VERSION` | `""` | Stage |
+| `jobs-table` | `JOBS_TABLE` | `parrot-jobs` | Stage |
+| `jobs-table-v2` | `JOBS_TABLE_V2` | `""` | Stage |
+| `uploads-bucket` | `JOBS_BUCKET` | `""` | Stage |
+| `dispatch-queue-url` | `DISPATCH_QUEUE_URL` | `""` | Stage |
+| `dispatch-queue-name` | `DISPATCH_QUEUE` | `parrot-job-dispatch` | Stage |
+| `orchestration-api-url` | `ORCHESTRATION_API_URL` | `""` | Stage |
+| `orchestration_service_contract/api_key` | `ORCHESTRATION_API_KEY` | `""` | Stage |
+| `openrouter-api-key` | `OPENROUTER_API_KEY` | `""` | Base |
+| `openrouter-model` | `OPENROUTER_MODEL` | `google/gemini-3-flash-preview` | Base |
+| `cloudflare-account-id` | `CLOUDFLARE_ACCOUNT_ID` | `""` | Base |
+| `cloudflare-api-token` | `CLOUDFLARE_API_TOKEN` | `""` | Base |
+| `llama-parse-key` | `LLAMA_PARSE_API_KEY` | `""` | Stage |
+| `part-lookup-url` | `PART_LOOKUP_URL` | `""` | Base |
+| `es/api_key` | `ES_API_KEY` | `""` | Base |
+| `es/api_url` | `ES_URL` | `""` | Base |
+| `es/index` | `ES_INDEX` | `catsy_data_scheduled_jobs` | Base |
+| `kore-user` | `KORE_USER` | `""` | Base |
+| `kore-pass` | `KORE_PASS` | `""` | Base |
+| `log-level` | `LOG_LEVEL` | `INFO` | Base |
+
+## Feature flags and debug switches
+
+| Variable | Source | Effect |
+| --- | --- | --- |
+| `QUOTE_BUILDER_IMAGE_INGEST` | `config.json` / `.env` | Master switch for image ingestion (#9024). `1` enables PNG/JPG/JPEG/WebP transcription via vision OCR. `0` (default when absent) excludes image attachments entirely. |
+| `QUOTE_BUILDER_LLM_DEBUG` | `.env` | When set to `1`, enables verbose LLM request/response logging in the pipeline. |
+| `QUOTE_BUILDER_ATTACHMENT_CONCURRENCY` | `.env` | Max concurrent email attachments processed. Default `4`. |
+| `QUOTE_BUILDER_MIN_CONFIDENCE` | `.env` | Shared confidence threshold used by junk filter and validation. Default `0.5`. |
+
+## LLM token budgets
+
+`chalicelib/pipeline/config.py` defines per-step `max_tokens` budgets. Override order:
+
+1. `QUOTE_BUILDER_MAX_TOKENS_<MODEL_FAMILY>_<STEP>`
+2. `QUOTE_BUILDER_MAX_TOKENS_<STEP>`
+3. `MODEL_LLM_MAX_TOKEN_OVERRIDES[model_family][step]`
+4. `LLM_MAX_TOKENS[step]`
+
+Example defaults:
+
+| Step | Default tokens |
+| --- | --- |
+| `description_cleanup` | `4000` |
+| `document_classify` | `50` |
+| `match_select` | `1536` |
+| `structured_search_specs` | `12000` |
+| `translate` | `4000` |
+| `wall_split` | `4000` |
+
+Retry growth is controlled by `QUOTE_BUILDER_MAX_TOKEN_RETRY_MULTIPLIER` (default `2`).
+
+## IAM policies
+
+### Dev policy (`policy-dev.json`)
+
+| Service | Actions | Resources |
+| --- | --- | --- |
+| DynamoDB | `GetItem`, `PutItem`, `UpdateItem`, `Query`, `Scan` | `parrot-jobs-dev`, `parrot-jobs-dev-v2` |
+| S3 | `GetObject`, `PutObject`, `DeleteObject`, `ListBucket` | `parrot-uploads-dev-201014308786` |
+| SQS | `SendMessage`, `ReceiveMessage`, `DeleteMessage`, `GetQueueAttributes`, `GetQueueUrl` | `parrot-job-dispatch-dev`, `parrot-job-dispatch-dev-dlq` |
+| SSM | `GetParametersByPath`, `GetParameter` | `arn:aws:ssm:*:*:parameter/parrot/*` |
+| Logs | `CreateLogGroup`, `CreateLogStream`, `PutLogEvents` | `arn:aws:logs:*:*:*` |
+| VPC | `CreateNetworkInterface`, `DescribeNetworkInterfaces`, `DeleteNetworkInterface`, `AssignPrivateIpAddresses`, `UnassignPrivateIpAddresses` | `*` |
+
+### Prod policy (`policy-prod.json`)
+
+Same actions, but resources target prod names:
+
+| Service | Resources |
+| --- | --- |
+| DynamoDB | `parrot-jobs`, `parrot-jobs-v2` |
+| S3 | `parrot-uploads-201014308786` |
+| SQS | `parrot-job-dispatch`, `parrot-job-dispatch-dev-dlq` |
+
+## AWS resources
+
+| Resource | Dev name | Prod name |
+| --- | --- | --- |
+| DynamoDB jobs table | `parrot-jobs-dev` | `parrot-jobs` |
+| DynamoDB jobs table v2 | `parrot-jobs-dev-v2` | `parrot-jobs-v2` |
+| S3 uploads bucket | `parrot-uploads-dev-201014308786` | `parrot-uploads-201014308786` |
+| SQS dispatch queue | `parrot-job-dispatch-dev` | `parrot-job-dispatch` |
+| SQS DLQ | `parrot-job-dispatch-dev-dlq` | `parrot-job-dispatch-dev-dlq` |
+| Lambda security group | `sg-0b3faeef88c27c746` | `sg-0b3faeef88c27c746` |
+| Lambda subnet | `subnet-0d37f2507aacfe8a6` | `subnet-0d37f2507aacfe8a6` |
+
+## Orchestration dual mode
+
+The worker reports results in two modes, controlled by the presence of `orchestration-api-url`:
+
+- **Dev mode**: Orchestration URL is empty. The worker writes progress, completion, and failure directly to DynamoDB.
+- **Prod mode**: Orchestration URL is configured. The worker sends S1/S2/S3 HTTP callbacks to the Orchestration API and writes result JSON to S3 for reference.
+
+See `/parrot/orchestration-api` for the Orchestration API contract.

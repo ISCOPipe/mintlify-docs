@@ -1,1 +1,275 @@
+---
+title: "Parrot testing and evaluation guide"
+sidebarTitle: "Testing & Evaluation"
+description: "Run the Parrot test suite, evaluate matching accuracy with frozen datasets, and follow the contribution workflow for changes."
+---
 
+Parrot ships with a comprehensive test suite for the matching pipeline, an eval harness that grades accuracy against frozen RFQ datasets, and a contribution workflow that ties every change to ADO work items and eval runs.
+
+## Test suite
+
+The `tests/` directory contains unit and integration tests for every major subsystem. Run the full suite with pytest, or run individual test files directly.
+
+```bash
+# Run all tests
+uv run pytest tests/
+
+# Run a specific area
+uv run python tests/test_catalog_strategy_admission.py
+uv run python tests/test_context_precedence.py
+uv run python tests/test_email_html_table_ingest.py
+uv run python tests/test_image_transcribe.py
+uv run python tests/test_metric_size_conversion.py
+uv run python tests/test_part_codes.py
+uv run python tests/test_search_weight_grid.py
+uv run python tests/test_tier3_challenger.py
+uv run python tests/test_uom_inference.py
+uv run python tests/test_worker_dynamodb_versioning.py
+```
+
+### Areas covered by tests
+
+| Test file | What it covers |
+| --- | --- |
+| `test_catalog_strategy_admission.py` | Catalog search strategy admission logic |
+| `test_context_precedence.py` | Context binding and precedence resolution |
+| `test_context_resolve_note.py` | Note resolution in cross-line context |
+| `test_email_attachment_image_gate.py` | Image attachment relevance gating |
+| `test_email_attachment_routing_metadata.py` | Attachment routing metadata extraction |
+| `test_email_html_table_ingest.py` | HTML table ingestion from email bodies |
+| `test_email_inline_image_surface.py` | Inline image detection and surfacing |
+| `test_eval_reingest_mode.py` | Eval harness re-ingest path |
+| `test_eval_session_id.py` | OpenRouter session grouping in eval |
+| `test_flange_ring_dr_defaults.py` | Flange ring dimension rating defaults |
+| `test_fm_catalog_search.py` | FM (fitting manufacturer) catalog search |
+| `test_fm_cl_pressure_class.py` | Pressure class handling in FM context |
+| `test_fm_standard_not_dr.py` | Standard vs DR distinction for FM lines |
+| `test_image_transcribe.py` | Vision OCR transcription of RFQ images |
+| `test_kit_affinity_metrics.py` | Kit affinity scoring metrics |
+| `test_line_context_classify.py` | Per-line context classification |
+| `test_llamaparse_table_ingest.py` | LlamaParse table extraction |
+| `test_match_select_bound_notes.py` | Bound note selection in matching |
+| `test_metric_size_conversion.py` | Metric and imperial size conversion |
+| `test_openrouter_session_id.py` | Session ID propagation to OpenRouter |
+| `test_orch_complete_uom_fallback.py` | UOM fallback in orchestration completion |
+| `test_part_code_corroboration.py` | Part code corroboration logic |
+| `test_part_codes.py` | Part code parsing and validation |
+| `test_pdf_coord_representative_gate.py` | Coordinate-based PDF table representative gating |
+| `test_pdf_liteparse_routing.py` | LiteParse PDF routing decisions |
+| `test_reducer_catalog_viability.py` | Catalog viability scoring in the reducer |
+| `test_reducer_chain_split.py` | Reducer chain splitting logic |
+| `test_search_weight_grid.py` | Search weight grid tuning |
+| `test_spreadsheet_ingest.py` | Spreadsheet ingestion pipeline |
+| `test_spreadsheet_ingest_race.py` | Race conditions in spreadsheet ingestion |
+| `test_structurer_current_behavior.py` | Structurer current behavior snapshot |
+| `test_ticket_hybrids.py` | Hybrid ticket handling |
+| `test_tier3_artifact.py` | Tier-3 challenger artifact serialization |
+| `test_tier3_centroid.py` | Centroid geometry for Tier-3 |
+| `test_tier3_challenger.py` | Tier-3 challenger end-to-end |
+| `test_tier3_challenger_cli.py` | Tier-3 challenger CLI |
+| `test_tier3_embeddings.py` | Embedding cache and ES inference |
+| `test_tier3_model.py` | Supervised model helpers for Tier-3 |
+| `test_tier3_sidecar.py` | Sidecar record building for search tuning |
+| `test_tier3_sparse.py` | Sparse classifier heads for Tier-3 |
+| `test_uom_inference.py` | Unit-of-measure inference |
+| `test_vocabulary_aliases.py` | Vocabulary alias resolution |
+| `test_worker_dynamodb_versioning.py` | DynamoDB record versioning in the worker |
+| `test_worker_service_scoring.py` | Worker service scoring logic |
+| `test_wrapped_table_header.py` | Wrapped table header handling |
+| `dry_run_worker.py` | Full SQS-to-worker flow simulation |
+| `test_pipeline_gui.py` | Interactive TUI for fixture-based testing |
+
+## Eval harness
+
+The eval harness runs frozen RFQ datasets through the production matcher tail and records accuracy metrics to Elasticsearch. It lives in `chalicelib/eval/` and is invoked through `tests/eval.py`.
+
+### Frozen eval sets
+
+Eval sets are stored under `tests/eval_sets/`. Each subdirectory is a named set consumed by the harness. Two shapes are supported:
+
+- **Lines shape** (`lines.json`): pre-extracted lines run through the matcher tail only (fast). Lines carry `source_id` (originating RFQ) and `line_number` so cross-line tools see real siblings.
+- **Fixtures shape** (`fixtures/` + `labels.json`): full RFQ files run through the entire pipeline (ingest, extract, structure, match).
+
+### Running an eval
+
+```bash
+# Run all discovered sets
+python tests/eval.py \
+  --change-name "Prefer higher DRs" \
+  --description "Prefer SDR-17 over DR-21 in tie-breaks"
+
+# Run specific cases
+python tests/eval.py \
+  --change-name "Fix flange ring defaults" \
+  --description "Update DR fallback for flange backup rings" \
+  --datasets Brent-1-v0,Osborne-1-v0
+
+# Run by family
+python tests/eval.py \
+  --change-name "Coastal plains structurer" \
+  --description "Improve coastal plains BOM structuring" \
+  --families may20-29-2026-user-testing
+
+# Re-ingest source files instead of replaying lines
+python tests/eval.py \
+  --change-name "Re-ingest test" \
+  --description "Run full pipeline on source files" \
+  --datasets Brent-1-v0 \
+  --reingest
+
+# Dry run (compute and print, skip ES write)
+python tests/eval.py \
+  --change-name "Draft" \
+  --description "WIP" \
+  --dry-run
+```
+
+### CLI flags
+
+| Flag | Description |
+| --- | --- |
+| `--change-name` | Short label for the change (required) |
+| `--description` | What the commit changed (required) |
+| `--datasets` / `--cases` | Comma-separated case names |
+| `--families` | Comma-separated family tags; runs every case in each family |
+| `--status` | `pr_candidate`, `merged`, `rejected`, `manual_experiment`, `prod` |
+| `--baseline` | `auto` (most recent prior run) or `prod` (production baseline) |
+| `--runs` | Bootstrap runs per dataset (default `3`) |
+| `--concurrency` | Per-file line fan-out (default `8`) |
+| `--session-id` | OpenRouter session ID for grouping LLM activity |
+| `--reingest` | Re-ingest source files through the full pipeline |
+| `--dry-run` | Compute summary but do not write to Elasticsearch |
+| `--pr-number` | PR number (defaults to `GITHUB_PR_NUMBER` env var) |
+
+### Metrics
+
+The harness computes population-aware metrics. Every line falls into one of three populations based on `truth_source`:
+
+| Population | `truth_source` | What we know | Headline metrics |
+| --- | --- | --- | --- |
+| Positive | `user_accepted` | User clicked a candidate; ground truth PN known | Top1, top3_hit, top5_hit, MRR, PCD_p |
+| NO-MATCH | `user_rejected_all` | User rejected all candidates; no ground truth PN | NoMDrft (drift at 5), Recov (recoveries), PCD_n |
+| Unlabeled | `unlabeled` | No human ever graded | PCD_u (drift vs prior run) |
+
+Key metrics:
+
+| Metric | Population | Interpretation |
+| --- | --- | --- |
+| **Top1** | Positive | % of confirmed lines where the pipeline's #1 pick matches the user's choice |
+| **top3_hit** | Positive | % where truth appears in the top 3 candidates |
+| **top5_hit** | Positive | % where truth appears in the top 5 candidates |
+| **MRR** | Positive | Mean reciprocal rank of truth in the ranked list |
+| **retrieval_hit10** | Positive | % where truth made the stored top-10 candidates (retrieval stage) |
+| **select_top1_given_retrieved** | Positive | Of retrieved truths, % placed at rank 1 (selection stage) |
+| **NoMDrft** | NO-MATCH | Mean Jaccard of new vs baseline candidates[:5]; stability canary |
+| **Recov** | NO-MATCH | Count of lines where the matcher now picks a PN the user never saw |
+| **PCD_p** | Positive | Positional confidence drift: how much the top pick stands above the rest |
+| **PCD_n** | NO-MATCH | How weak the strongest candidate was (high = well-supported rejection) |
+| **PCD_u** | Unlabeled | Pipeline decisiveness on unverifiable lines |
+
+### Building a set from DynamoDB
+
+```bash
+python tests/build_eval_set_from_dynamo.py \
+  --job-id job_AAAA...:PIPE-2311:flange mis-ranked \
+  --job-id job_BBBB...:PIPE-2312 \
+  --name MySet-v0 --owner jh20 --ticket PIPE-2300
+```
+
+Each `--job-id` value is `job_id[:TICKET[:NOTE]]`. `TICKET` is the subtask ticket that flagged the issue; every line from that job carries the same `ticket`/`note`. `--ticket` is the parent dataset tracking ticket.
+
+## Tier-3 challenger evaluation
+
+The Tier-3 challenger (`chalicelib/eval/tier3_*.py`) is an offline machine-learning pipeline that trains compact classifiers over Elasticsearch embeddings to improve category-level search routing.
+
+### Modules
+
+| Module | Purpose |
+| --- | --- |
+| `tier3_challenger.py` | Leakage-safe data preparation, deterministic feature extraction, chronological job-isolated train/validation/test splits |
+| `tier3_embeddings.py` | Batched ES inference and privacy-minimal embedding cache (`cache_key`, `normalize_text`, `EmbeddingCache`) |
+| `tier3_centroid.py` | Deliberately underfit multiscale classification in embedding space; geometric consensus across normalized geometries |
+| `tier3_sparse.py` | Sparse L1 classifier heads with stratified group k-fold selection over variance budgets and C values |
+| `tier3_model.py` | Small supervised-model helpers: temperature scaling, classification metrics, calibration error |
+| `tier3_artifact.py` | Portable, pickle-free artifact serialization (`FrozenTier3Artifact`) with SHA-256 fingerprinting |
+| `tier3_sidecar.py` | Per-line cached challenger evidence for search tuning; builds and validates sidecars |
+
+### Running Tier-3 tests
+
+```bash
+uv run python tests/test_tier3_challenger.py
+uv run python tests/test_tier3_challenger_cli.py
+uv run python tests/test_tier3_embeddings.py
+uv run python tests/test_tier3_model.py
+uv run python tests/test_tier3_sidecar.py
+uv run python tests/test_tier3_sparse.py
+uv run python tests/test_tier3_centroid.py
+uv run python tests/test_tier3_artifact.py
+```
+
+## GUI harness
+
+`tests/test_pipeline_gui.py` is a Textual TUI for interactively running the pipeline against local fixtures.
+
+```bash
+source .venv/bin/activate
+python tests/test_pipeline_gui.py           # log view
+python tests/test_pipeline_gui.py --pretty  # tabular view
+python tests/test_pipeline_gui.py --cost    # resolve OpenRouter costs
+python tests/test_pipeline_gui.py -p -c     # both
+```
+
+The GUI lets you pick any file from `tests/fixtures/`, toggle LLM features, and view product lines, quote items, validation results, and per-step cost summaries.
+
+## Contribution workflow
+
+Every change, including live config, Elasticsearch index changes, and SSM parameter updates, must be tracked. The workflow is defined in `AGENTS.md`.
+
+### Before any change
+
+1. Create an **ADO work item** in `ISCO-PIPE / Pipeline`. Title style: `Parrot - <Area> - <desc>`.
+2. Parent the work item under the correct **Feature**, never directly under the Epic. Examples:
+   - Matching work: "Parrot AI Match" (#8988)
+   - Self-healing: (#9009)
+   - The Parrot epic is #6904
+3. Create a **branch** named `feat/<work-item-id>-<slug>` (e.g. `feat/9040-water-standards-equivalence`).
+4. For any live or reversible experiment (e.g. an ES synonyms-set flip), record the exact reversal step on the ticket.
+
+### Commit style
+
+All commits must follow **conventional commits** with a smart Jira-style prefix:
+
+- `feat(pipeline):` — new feature
+- `fix(eval):` — bug fix
+- `chore(deps):` — dependency update
+- `test(eval):` — test addition
+- `tools:` — tooling
+
+Examples from the repo:
+
+```text
+tools: add api mapping conflict scanner
+test(eval): add Brent-2 replay sets and Brent-3 coastal structuring set
+feat(eval): support fixtures-shape sets and carry description/qty/uom
+fix(scoring): never demote confirmed top candidate via sigmoid
+fix(structurer): preserve description when source_lines is empty
+feat(ingest): coordinate-based PDF table extraction via pypdfium2
+chore(deps): add pypdfium2; enable chalice automatic_layer
+```
+
+### Commit workflow
+
+1. Stage only related changes (`git add -p` or `git add <file>`).
+2. Commit with a conventional message referencing the ticket where applicable (e.g. `PIPE-2302`).
+3. Push and create PRs for review. Squash if needed to preserve atomicity.
+4. Commit in dependency order: leaf changes first, then parents, so the repo is never in a broken state between commits.
+
+### Eval before merge
+
+Run the eval harness on relevant datasets before opening a PR. The `MATCHER_WATCHLIST` in `chalicelib/eval/cli.py` flags paths whose changes should trigger an eval:
+
+- `quote_builder/chalicelib/pipeline/`
+- `quote_builder/chalicelib/llm/`
+- `quote_builder/chalicelib/services/worker_service.py`
+
+Use `--status pr_candidate` for pre-merge runs and `--status merged` after merge (the harness refuses `merged` from a dirty tree).
