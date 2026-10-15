@@ -1,1 +1,188 @@
+---
+title: "Set Up Navigator Services API for Local Development"
+sidebarTitle: "Services Setup"
+description: "Clone the navigator_services repo, install dependencies, configure required environment variables, and run the stateless API locally on port 4443."
+---
 
+This page covers how to get the Navigator Services API (`navigator_services`) running on your local machine. The PWA (`itinerary-builder`) expects this API at `localhost:4443` by default. You will need Azure AD credentials and database access to complete the setup.
+
+## Prerequisites
+
+- **Node.js** (the repo uses TypeScript and targets ES2022)
+- **npm**
+- **Azure AD credentials** (client ID and tenant ID from your ISCO Azure app registration)
+- **Database credentials** (SQL Server user/password/server and/or Elasticsearch nodes and credentials)
+
+## Clone and Install
+
+```bash
+git clone https://github.com/ISCOPipe/navigator_services.git
+cd navigator_services
+npm ci
+```
+
+## Environment Variables
+
+Copy the template file and fill in the required values:
+
+```bash
+cp dummyenv .env
+```
+
+### Required Variables
+
+| Variable | Purpose |
+| --- | --- |
+| `DB_USER` | SQL Server username |
+| `DB_PASSWORD` | SQL Server password |
+| `DB_SERVER` | SQL Server host |
+| `ES_USER` | Elasticsearch username |
+| `ES_PASSWORD` | Elasticsearch password |
+| `ES_NODES` | Elasticsearch node addresses (comma-delimited if multiple) |
+| `AZURE_CLIENT_ID` | Azure AD application client ID for JWT validation |
+| `AZURE_TENANT_ID` | Azure AD tenant ID for JWT validation |
+
+### Optional Variables
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `NODE_ENV` | Runtime environment (`production`, `navigator`, or omitted for dev) | (dev) |
+| `PORT` | HTTP port the server binds to | `4443` |
+| `CORS_ORIGIN` | Allowed origins (single or comma-delimited list) | `http://localhost:5173` |
+| `MAX_REQUEST_BODY_SIZE` | Maximum request body size | `10mb` |
+| `key_path` | Path to SSL private key file | (none) |
+| `cert_path` | Path to SSL certificate file | (none) |
+| `DB_USE_WINDOWS_AUTH` | Set to any value to use Windows auth instead of SQL Server auth | (disabled) |
+| `ADDRESS_INDEX` | Override the default Elasticsearch addresses index | `addresses` |
+| `SENDGRID_API_KEY` | SendGrid API key for email features | (none) |
+| `PIPELINE_BASE_URL` | Base URL for Pipeline links in emails | (none) |
+| `MAPBOX_TOKEN` | Mapbox token for geocoding services | (none) |
+| `HUBSPOT_ACCESS_TOKEN` | HubSpot API token for CRM integration | (none) |
+
+<Warning>
+  Never commit real credentials to the repo. The `.env` file is gitignored. If you need to share configuration names with teammates, share the `dummyenv` template only.
+</Warning>
+
+## NPM Scripts
+
+From `package.json`:
+
+| Command | What It Does |
+| --- | --- |
+| `npm run clean` | Remove the `dist` build directory |
+| `npm run build` | Clean and compile TypeScript to `dist/` |
+| `npm start` | Run the compiled server from `dist/server.js` |
+| `npm run dev` | Start the dev server with `ts-node-dev` (auto-restart on file changes) |
+| `npm test` | Run the Jest test suite |
+| `npm run generate:openapi` | Generate an OpenAPI spec from route JSDoc comments |
+
+## Start the Server
+
+For local development:
+
+```bash
+npm run dev
+```
+
+The server starts on the port configured in `PORT` (default `4443`). You should see output like:
+
+```text
+🚀 Running in development mode with HTTP server
+🚀 HTTP server running at http://localhost:4443
+📘 Swagger docs: http://localhost:4443/docs
+```
+
+In development mode, the Swagger UI is available at `/docs` and does not require authentication.
+
+## Production Mode and SSL
+
+When `NODE_ENV` is set to `production` or `navigator`, the server checks for `key_path` and `cert_path`. If both files exist, it starts an HTTPS server. If the certificate files are missing, it falls back to HTTP with a warning.
+
+The deployed production host is `pathfinder.isco-pipe.com` on port `4443` with SSL enabled.
+
+## PM2 Deployment
+
+The repo includes `ecosystem.config.js` for PM2 deployments:
+
+```js
+module.exports = {
+  apps: [
+    {
+      name: 'navigator_services',
+      script: './dist/server.js',
+      watch: false,
+      instances: 1,
+      exec_mode: 'cluster',
+      env: {
+        NODE_ENV: 'production'
+      }
+    }
+  ]
+};
+```
+
+Build first, then reload with PM2:
+
+```bash
+npm run build
+pm2 reload ecosystem.config.js
+```
+
+## Testing
+
+The test suite uses Jest with `ts-jest`. Tests are located in `tests/` and cover routes, utilities, and integrations.
+
+### Run All Tests
+
+```bash
+npm test
+```
+
+### Test Configuration
+
+`jest.config.js` configures:
+
+- **Test environment**: `node`
+- **Setup file**: `tests/setup_env.ts` (injects placeholder Azure AD env vars before module registry loads)
+- **Transform**: `ts-jest` with `tests/tsconfig.json` (uses `isolatedModules: true` for memory efficiency)
+- **ESM support**: Transpiles ESM-only dependencies (`sanitize-html`, `htmlparser2`, etc.) instead of ignoring them
+- **Workers**: Capped at 50% CPU with a 512MB idle memory limit per worker to prevent OOM failures
+- **Coverage**: Outputs `lcov` and `text` reports to `coverage/`
+
+### Placeholder Auth in Tests
+
+`tests/setup_env.ts` sets placeholder values for `AZURE_TENANT_ID` and `AZURE_CLIENT_ID` so the JWT validation module does not fail during test initialization. This is required because `validate_azure_jwt.ts` fails fast when these variables are missing.
+
+## CI / CD
+
+The repo uses a self-hosted GitHub Actions runner for deployment (`.github/workflows/deploy.yml`):
+
+1. Triggered when a pull request to `main` is merged
+2. SSHs into the deployment server
+3. Fetches the latest `main` branch at `/opt/navigator_tapis`
+4. Runs `npm ci && npm run build && pm2 reload ecosystem.config.js`
+
+## Project Structure
+
+```text
+navigator_services/
+├── src/
+│   ├── api/              # Express route files (auto-mounted at /api/v1/<filename>)
+│   ├── controllers/      # Route handlers
+│   ├── docs/             # Swagger spec generation
+│   ├── elastic/          # Elasticsearch client and APM setup
+│   ├── interfaces/       # TypeScript type definitions
+│   ├── server.ts         # Express server entry point
+│   ├── services/         # Business logic
+│   ├── utils/            # Utilities (JWT validation, etc.)
+│   └── worker/           # Background worker and MSSQL connection pool
+├── tests/                # Jest test files
+├── ecosystem.config.js   # PM2 configuration
+├── jest.config.js        # Jest configuration
+├── dummyenv              # Environment variable template
+└── package.json          # Dependencies and scripts
+```
+
+## Connecting the PWA
+
+Once the services are running on `localhost:4443`, the NaviGator PWA can connect to it. See [App Setup](/navigator/app-setup) for PWA configuration. If you run both locally, set `VITE_API_BASE_URL=http://localhost:4443` in the PWA's `.env` file.

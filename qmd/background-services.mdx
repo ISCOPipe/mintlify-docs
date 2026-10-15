@@ -1,1 +1,140 @@
+---
+title: "QMD Background Services: Device Reading and Email Alerts"
+sidebarTitle: "Background Services"
+description: "Overview of the QMD background services that process device readings and send email alerts, including how each runs and the configuration keys they rely on."
+---
 
+QMD relies on several background services to keep device data in sync and to notify stakeholders when weld anomalies occur. These services run as Windows services or scheduled console applications across the web, API, and Windows repositories. This page explains what each service does, how it runs, and the configuration keys you must set.
+
+## Service inventory
+
+| Service | Repository path | Type | Interval / trigger | Purpose |
+| --- | --- | --- | --- | --- |
+| **DeviceReadingService** | `qmd_weld_app_web/Projects/ISCODeviceReadingService` | Windows service | Every 20 minutes (1,200,000 ms) | Reads device pressure data, removes duplicates, and updates `tblDeviceReading` records per job. |
+| **ISCOEmailAlert (web)** | `qmd_weld_app_web/Projects/ISCOEmailAlert` | Windows service | Every 5 minutes (300,000 ms) | Sends anomaly and duplicate-joint email alerts to plant managers, operators, administrators, directors, and testers. |
+| **ISCOEmailAlert (API)** | `qmd_weld_app_api/ISCOEmailAlert` | Windows service | Every 5 minutes (300,000 ms) | Same alert logic as the web variant, deployed against the API database. |
+| **ISCOEmailAlert (Windows)** | `qmd_weld_app_windows/ISCOEmailAlert` | Windows service | Every 1 minute (60,000 ms) | Same alert logic, packaged for on-premise Windows environments. |
+| **UpdateRecords** | `qmd_weld_app_windows/UpdateRecords` | Windows Forms app | Manual / on-demand | Recalculates job stage timings (bead up, heat soak, dwell time, fusion) and regenerates SQL to update `tblJobStageTimes` and `tblAnomaly`. |
+
+## DeviceReadingService
+
+### What it does
+
+`DeviceReadingService` polls the database for active jobs, fetches the related device readings for each job, deduplicates entries, and writes the cleaned data back to `tblDeviceReading`. It uses the stored procedure `usp_GetJobInformationId_DeviceReading` to discover jobs and `usp_GetPresure_DeviceReading` to retrieve readings.
+
+### How it runs
+
+The service is a .NET Framework Windows service. On start it executes an immediate sync, then starts a `System.Timers.Timer` set to **1,200,000 ms** (20 minutes). Each elapsed event calls `GetJointIds()` again. The service logs start, stop, and exception events to the Windows Event Log under the source **IscoSource** and log **Isco**.
+
+### Configuration keys
+
+The service reads its database connection from `App.config`:
+
+```xml
+<connectionStrings>
+  <add name="IscoConnection"
+       connectionString="..."
+       providerName="System.Data.SqlClient"/>
+</connectionStrings>
+```
+
+| Key name | Purpose |
+| --- | --- |
+| `IscoConnection` | SQL Server connection string for the QMD database. |
+
+## ISCOEmailAlert
+
+### What it does
+
+`ISCOEmailAlert` scans the database for jobs that require notifications, builds alert bodies from weld metadata, and sends emails to the appropriate recipients. It also detects duplicate joints and sends a separate notification to plant managers. The service uses the stored procedure `usp_Get_JobInformationId` to list jobs and `usp_GetDataForAlert` to build alert payloads.
+
+### How it runs
+
+There are three builds of the same service:
+
+1. **Web build** (`qmd_weld_app_web/Projects/ISCOEmailAlert`) runs on a **5-minute** timer.
+2. **API build** (`qmd_weld_app_api/ISCOEmailAlert`) runs on a **5-minute** timer.
+3. **Windows build** (`qmd_weld_app_windows/ISCOEmailAlert`) runs on a **1-minute** timer.
+
+All three are .NET Framework Windows services that log to the same **IscoSource** event source.
+
+### Configuration keys
+
+Each build uses `App.config` with the following keys:
+
+```xml
+<appSettings>
+  <add key="MailServerHost" value="smtp.gmail.com" />
+  <add key="MailServerUser" value="..." />
+  <add key="MailServerPassword" value="..." />
+  <add key="MailServerPort" value="587" />
+  <add key="FromAddress" value="..." />
+  <add key="EnableEmail" value="true" />
+  <add key="SSL" value="true" />
+  <add key="SiteURL" value="http://.../iscoweb" />
+</appSettings>
+<connectionStrings>
+  <add name="IscoConnection" connectionString="..." providerName="System.Data.SqlClient"/>
+</connectionStrings>
+```
+
+| Key name | Purpose |
+| --- | --- |
+| `MailServerHost` | SMTP server hostname. |
+| `MailServerUser` | SMTP authentication username. |
+| `MailServerPassword` | SMTP authentication password. |
+| `MailServerPort` | SMTP server port. |
+| `FromAddress` | Sender address on outbound alert emails. |
+| `EnableEmail` | Toggle to enable or disable email dispatch (`true` or `false`). |
+| `SSL` | Whether to use SSL/TLS for the SMTP connection (`true` or `false`). |
+| `SiteURL` | Base URL for alert links back to the QMD web portal. |
+| `IscoConnection` | SQL Server connection string for the QMD database. |
+
+<Warning>
+  Do not commit real SMTP passwords to source control. Store secrets in environment-specific transforms or a secrets manager, and reference them at deployment time.
+</Warning>
+
+## UpdateRecords
+
+### What it does
+
+`UpdateRecords` is a Windows Forms application that recalculates job stage timings for a given `JobInformationId`. It computes bead up, heat soak, dwell time, and fusion windows by iterating over `tblDeviceReading` rows and comparing them against anomaly thresholds stored in `tblAnomalyJobStage`. The app generates SQL `INSERT` and `UPDATE` statements for `tblAnomaly` and `tblJobStageTimes`, which you can review before executing.
+
+### How it runs
+
+Unlike the other services, `UpdateRecords` is a **manual, on-demand** desktop application. You launch it, enter one or more comma-separated `JobInformationId` values, click the generate button, and then confirm execution. It is intended for data repair or backfill scenarios rather than continuous operation.
+
+### Configuration keys
+
+The application reads from `App.config`:
+
+```xml
+<connectionStrings>
+  <add name="iscorelease120718Entities"
+       connectionString="..."
+       providerName="System.Data.EntityClient"/>
+  <add name="Constr"
+       connectionString="..."/>
+</connectionStrings>
+```
+
+| Key name | Purpose |
+| --- | --- |
+| `iscorelease120718Entities` | Entity Framework connection string for the QMD model. |
+| `Constr` | Plain ADO.NET connection string used for direct `SqlCommand` execution. |
+
+## Event logging
+
+All Windows services write to the Windows Event Log:
+
+- **Source**: `IscoSource`
+- **Log**: `Isco`
+
+Typical entries include service start/stop messages and exception traces from `DeviceReadingService` and `ISCOEmailAlert`. If alerts or readings stop syncing, check the Event Viewer for errors under this source.
+
+## Deployment notes
+
+- Build each service in Release mode and install it with `installutil` or your preferred Windows service installer.
+- Ensure the service account has network access to the SQL Server instance referenced in `IscoConnection`.
+- For the email service, verify that the SMTP host and `FromAddress` are whitelisted by your mail infrastructure.
+- The `UpdateRecords` app should be run from a workstation with direct database access and should not be deployed as a service.
