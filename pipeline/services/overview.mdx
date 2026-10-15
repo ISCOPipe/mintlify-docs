@@ -1,1 +1,90 @@
+---
+title: "Pipeline Services API: Node/TypeScript backend for ISCO data services"
+sidebarTitle: "Overview"
+description: "The Pipeline Services API is a hot-reloadable Node/TypeScript Express server that exposes REST endpoints and WebSockets for ISCO's intranet, QMD, Navigator, and external integrations."
+---
 
+The Pipeline Services API (repo: `services_hot_reload`) is a hot-reloadable Node/TypeScript Express server that exposes REST endpoints and WebSockets for ISCO's intranet, QMD, Navigator, and external integrations. It connects to SQL Server, Elasticsearch, AWS S3, HubSpot, SendGrid, and other third-party services, and dynamically loads route files from `src/api/` so new services appear without restarting the server.
+
+## Stack and runtime
+
+| Layer | Technology |
+| --- | --- |
+| Runtime | Node.js with TypeScript (`ts-node-dev` for local development) |
+| Framework | Express 4 with CORS, JSON, and URL-encoded body parsing |
+| Documentation | Swagger UI served at `/docs` from JSDoc annotations in `src/api/` |
+| Process manager | PM2 (`ecosystem.config.js`) for production deployments |
+| Testing | Jest with `ts-jest` and `supertest` |
+
+The entry point is `src/server.ts`. In development, run `npm run dev` to start the server with automatic restart on file changes. In production, the build compiles to `dist/` and starts with `npm start` or `pm2 reload`.
+
+## Source layout
+
+The `src/` directory is organized by responsibility:
+
+| Directory | Purpose |
+| --- | --- |
+| `src/api/` | Express route files. Each `.ts` file becomes a route under `/api/v1/<filename>` automatically. |
+| `src/services/` | Business logic modules called by routes (Kore search, pricing, product lookup, email, attachments, etc.). |
+| `src/controllers/` | Higher-level orchestration for complex flows like multipart attachment uploads. |
+| `src/interfaces/` | TypeScript type definitions shared across routes and services. |
+| `src/worker/` | Shared infrastructure: SQL connection pooling (`mssql_connection.ts`), input validation, and WebSocket server setup. |
+| `src/websockets/` | WebSocket handler files. Each export named `setup<Filename>WebSocket` is auto-wired to `/websockets/<filename>`. |
+| `src/elastic/` | Elasticsearch client, APM middleware, and logging utilities. |
+| `src/aws/` | S3 client configuration and presigned URL helpers. |
+| `src/openrouter/` | OpenRouter client for structured output generation. |
+| `src/docs/` | Swagger specification generator. |
+
+## Request flow and auth
+
+When a request arrives, the server applies global middleware in this order:
+
+1. **CORS** with pagination headers exposed (`X-Next-Page`, `X-Total-Count`, `X-Page-Size`, etc.).
+2. **Body parsing** for URL-encoded and JSON payloads.
+3. **Dynamic routing**: `src/server.ts` scans `src/api/` and mounts each file at `/api/v1/<basename>`.
+4. **APM context**: routes can attach `apmServiceMiddleware` from `src/elastic/apm-middleware.ts` to tag traces by service name.
+
+Authentication is endpoint-specific. The Swagger spec defines a `bearerAuth` security scheme, and individual routes validate tokens or API keys as needed. For example, WebSocket refresh triggers in `src/websockets/emit_auth.ts` require a Bearer token matching the `EMIT_WEBSOCKET_TOKEN` environment variable using a timing-safe comparison.
+
+## Main service areas
+
+The API covers a broad set of ISCO business domains. Key route families include:
+
+| Domain | Example routes |
+| --- | --- |
+| Sales and orders | `orders.ts`, `quotes.ts`, `opportunities.ts`, `customers.ts`, `pricing.ts` |
+| Warehouse and logistics | `picklist.ts`, `bin.ts`, `shipping_exception.ts`, `transfers.ts`, `warehouse_detail.ts` |
+| Manufacturing and quality | `fab_scoreboard.ts`, `dc_fab_queue.ts`, `ncr.ts`, `structure_test.ts`, `structure_test_log.ts` |
+| Rentals and assets | `rental_dashboard.ts`, `rental_mobilization.ts`, `rental_asset_tracking.ts`, `rental_order.ts` |
+| HR and employees | `employees.ts`, `hr_dashboard.ts`, `user.ts`, `team_stats.ts` |
+| Integrations | `hubspot.ts`, `ado.ts`, `emailer.ts`, `s3.ts`, `attachment.ts` |
+| Maps and geocoding | `map.ts`, `heat_map.ts`, `geocode_customers_on_partnum.ts`, `sales_golf_map.ts` |
+| Real-time updates | `activity_notifications.ts`, `dc_fab_queue_refresh.ts`, `fab_dc_queue_priority.ts` (WebSockets) |
+
+## Who calls it
+
+- **Pipeline intranet** (PHP/React frontend): the primary consumer of the REST API.
+- **QMD field app and web portal**: reads and writes weld data through dedicated endpoints.
+- **Navigator PWA**: uses services for itinerary and dashboard data.
+- **External integrations**: HubSpot sync, Azure DevOps lookups, email delivery, and AWS S3 file operations.
+- **Internal automation**: smoke tests, scheduled jobs, and CI health checks hit `/api/v1/health` and `/api/v1/health/smoketest`.
+
+## Explore the Services API
+
+<CardGroup cols={2}>
+  <Card title="Local setup" icon="laptop-code" href="/pipeline/services/local-setup">
+    Clone the repo, install dependencies, and start the dev server with hot reload.
+  </Card>
+
+  <Card title="Endpoints" icon="code" href="/pipeline/services/endpoints">
+    Browse the auto-generated Swagger docs and learn how route files map to URLs.
+  </Card>
+
+  <Card title="Adding a service" icon="plus" href="/pipeline/services/adding-a-service">
+    Create a new route file, add business logic in `src/services/`, and expose it through the API.
+  </Card>
+
+  <Card title="Deployment" icon="rocket" href="/pipeline/services/deployment">
+    Build, test, and deploy with PM2 and the production environment configuration.
+  </Card>
+</CardGroup>

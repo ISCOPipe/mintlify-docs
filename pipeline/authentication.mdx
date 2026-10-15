@@ -1,1 +1,152 @@
+---
+title: "Pipeline authentication, sessions, and role-based access control"
+sidebarTitle: "Authentication"
+description: "Understand how Pipeline authenticates users via LDAP/Active Directory, manages sessions, and enforces role-based access on PHP pages."
+---
 
+Pipeline uses LDAP/Active Directory for authentication and a role-based system for authorization. Every PHP page includes `inc/env.php`, which starts the session, validates the user, and loads the user's roles from the `IT` database. This page explains the login flow, how sessions work, the role constants, and how to protect a new page.
+
+## Login flow
+
+The login page is `login.php`. It renders a username and password form that submits to `auth.php`.
+
+```php
+// login.php - form submits to auth.php
+<form action="auth.php" method="POST">
+  <input type="text" id="username" name="username" />
+  <input type="password" id="userpassword" name="userpassword" />
+  <input type="hidden" name="refurl" value="<?php echo $refurl; ?>" />
+  <button type="submit">Log In</button>
+</form>
+```
+
+`auth.php` validates credentials against the ISCO Active Directory server (`adc.isco-pipe.local`, port `389`). The flow is:
+
+1. Bind with a service account to search for the user by `samaccountname`.
+2. If exactly one entry is found, bind again with the user's DN and the supplied password.
+3. On success, `auth.php` sets `$_SESSION['authusername']` and redirects to the original `refurl`.
+4. On failure, it redirects back to `login.php` with `password_error`, `user_error`, or `error` in the query string.
+
+<Warning>
+  Do not commit `auth.php` to a public repository. It contains the LDAP service account credentials used for the initial directory search.
+</Warning>
+
+## Sessions and the global include
+
+Every protected page includes `inc/env.php` at the top. This file:
+
+1. Calls `session_start()`.
+2. Checks `$_SESSION['authusername']`. If it is empty, the user is redirected to `/login.php` with the current URL encoded as `refurl`.
+3. Loads `inc/auth.php`, which queries the `IT` database for the user's roles and caches them in `$_SESSION`.
+4. Sets global variables such as `$username`, `$team`, `$role_list`, `$role_id_list`, and `$admin_access_by_class`.
+
+```php
+// Start of a typical protected page
+<?php
+include_once 'inc/env.php';
+// $username, $role_list, $role_id_list, etc. are now available
+?>
+```
+
+`inc/auth.php` also resolves the user's sales team from a cookie (`c_team`), a POST selection, or the `sales_oracle_users` / `rpt_sales_teams_members` tables, and stores it in `$_SESSION['salesteam']`.
+
+## Role constants
+
+Roles are defined as integer constants in `inc/roles.php`. A few common ones are shown below. See the source file for the full list.
+
+| Constant | Value | Typical use |
+| --- | --- | --- |
+| `Role::GLOBAL_ADMIN` | `1` | Full access to all pages |
+| `Role::SALES_ADMIN` | `2` | Sales administration |
+| `Role::SALES_MANAGER` | `3` | Sales manager access |
+| `Role::IT_ADMIN` | `36` | IT administration |
+| `Role::PRODUCTIONPLANNING_MANAGER` | `9` | Production planning manager |
+| `Role::RENTAL_MANAGER` | `10` | Rental manager |
+| `Role::SUPPLYCHAIN_ADMIN` | `6` | Supply chain admin |
+| `Role::HR_ADMIN` | `4` | HR admin |
+| `Role::QUALITY_NCR_SUPERUSER` | `23` | Quality NCR superuser |
+| `Role::PARROT_TEAM` | `73` | Parrot team access |
+
+## How pages check access
+
+`inc/access_check.php` defines role arrays for common functional areas and provides two helper functions.
+
+### `has_access($required_role)`
+
+Returns `true` if the user has any of the required roles. `GLOBAL_ADMIN` always passes.
+
+```php
+require_once 'inc/access_check.php';
+
+if (has_access($pp_manager)) {
+    // User is a production planning manager, admin, LET, or IT admin
+}
+```
+
+### `check_access($required_role, $dashboard, $class, $page_type)`
+
+Enforces access control. If the user lacks the required roles:
+
+- When `$dashboard` is `true`, it renders a card with a **Request Permission** button that calls `request_permission_task_automate.php`.
+- When `$dashboard` is `false`, it prints "Access denied!" and exits.
+
+```php
+require_once 'inc/access_check.php';
+
+// Only allow production planning managers and admins
+check_access($pp_manager, true, 'production_planning', 'Production Planning Dashboard');
+```
+
+## Predefined role arrays
+
+`inc/access_check.php` groups roles into arrays for common areas. Use these instead of building your own lists when possible.
+
+| Variable | Roles included |
+| --- | --- |
+| `$admin_only` | `IT_ADMIN` |
+| `$executive` | `LET`, `IT_ADMIN` |
+| `$pp_user` | Production planning user, manager, admin, LET, IT admin |
+| `$pp_manager` | Production planning manager, admin, LET, IT admin |
+| `$pp_admin` | Production planning admin, LET, IT admin |
+| `$finance_user` | Finance user, manager, admin, LET, IT admin |
+| `$finance_manager` | Finance admin, user, manager, LET, IT admin |
+| `$finance_admin` | Finance admin, LET, IT admin |
+| `$sales_user` | Sales admin, manager, business manager, inside sales, user, estimator, LET, IT admin |
+| `$lvl1` | Sales admin, LET, IT admin |
+| `$lvl2` | Sales admin, manager, LET, IT admin |
+| `$rental_user` | Rental manager, user, admin, LET, IT admin |
+| `$supply_user` | Supply chain admin, manager, user, LET, IT admin |
+| `$pipe_user` | Pipe manager, user, LET, IT admin |
+| `$quality_user` | Quality NCR admin, superuser, editor, readonly, LET |
+| `$parrot_team` | Parrot team, IT admin |
+| `$parrot_tester` | Parrot tester, Parrot team, IT admin |
+
+## How to protect a new page
+
+To add access control to a new PHP page:
+
+1. Include `inc/env.php` at the very top of the file.
+2. Include `inc/access_check.php`.
+3. Call `check_access()` with the appropriate role array.
+
+```php
+<?php
+include_once 'inc/env.php';
+require_once 'inc/access_check.php';
+
+// Allow sales users and above
+check_access($sales_user, true, 'sales', 'My New Sales Page');
+?>
+<!doctype html>
+<html>
+  <!-- page content -->
+</html>
+```
+
+<Tip>
+  Always call `check_access` before any output or database queries. The function exits the script if access is denied, so placing it early prevents leaking data.
+</Tip>
+
+## Log out
+
+Pipeline does not have a dedicated logout endpoint in the source. To sign out, clear the session cookie or navigate to `logoff.php` if your environment provides it. After the session is cleared, `inc/env.php` will redirect unauthenticated users to `login.php` on the next request.

@@ -1,1 +1,156 @@
+---
+title: "Set up Pipeline Services API locally from GitHub"
+sidebarTitle: "Local Setup"
+description: "Clone iscopipe/services_hot_reload, configure environment variables from dummyenv, install Node.js dependencies, and start the dev server on port 4443."
+---
 
+The Pipeline Services API is a Node.js/TypeScript auto-reloading server that exposes REST endpoints and WebSocket handlers. This guide takes you from a fresh clone of `iscopipe/services_hot_reload` to a working local server.
+
+## Requirements
+
+- [Node.js](https://nodejs.org/en/download) (the repo uses TypeScript 5.9 and targets ES2022)
+- npm
+- Git
+
+## Clone and configure
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/iscopipe/services_hot_reload.git
+    cd services_hot_reload
+    ```
+  </Step>
+  <Step title="Create your .env file">
+    Copy `dummyenv` to `.env` and fill in the credentials your team lead provides.
+
+    ```bash
+    cp dummyenv .env
+    ```
+
+    Required variables:
+
+    | Variable | Purpose |
+    | --- | --- |
+    | `DB_USER` | SQL server username |
+    | `DB_PASSWORD` | SQL server password |
+    | `DB_SERVER` | SQL server host |
+    | `ES_USER` | Elasticsearch username |
+    | `ES_PASSWORD` | Elasticsearch password |
+
+    Optional variables depend on the services you plan to use. For example, `EIA_API_KEY` and `MAPBOX_ACCESS_TOKEN` are used by the rental mobilization tool, and `SENDGRID_API_KEY` is required by the emailer route.
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+  <Step title="Start the dev server">
+    ```bash
+    npm run dev
+    ```
+
+    The server starts on `http://localhost:4443` with hot reload enabled. API routes are available at `/api/v1/<filename>` and Swagger docs are at `/docs`.
+  </Step>
+</Steps>
+
+<Note>
+  The dev script uses `ts-node-dev` with `--respawn --transpile-only`, so the server restarts automatically when you edit files in `src/`.
+</Note>
+
+## Optional: Python setup for rental mobilization
+
+The rental mobilization tool is the only feature that uses Python. Skip this section if you do not need it.
+
+### System packages
+
+Install Python 3, venv, pip, and Kerberos support:
+
+```bash
+sudo apt install python3-venv python3-pip krb5-user npm
+```
+
+### ODBC Driver 18 for SQL Server
+
+The rental mobilization tool connects to SQL Server through ODBC. Install the Microsoft ODBC driver:
+
+```bash
+# Download the Microsoft repo configuration package
+curl -sSL -O https://packages.microsoft.com/config/ubuntu/25.10/packages-microsoft-prod.deb
+sudo dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
+
+# Install the driver
+sudo apt-get update
+sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+```
+
+<Warning>
+  The snippet above uses the Ubuntu 25.10 package because a 26.04 version does not exist yet. It works on current LTS releases, but watch for compatibility issues when newer packages become available.
+</Warning>
+
+### Environment variables
+
+Add the following to your `.env`:
+
+| Variable | Value |
+| --- | --- |
+| `DB_DRIVER` | `ODBC Driver 18 for SQL Server` |
+| `EIA_API_KEY` | Your EIA API key (see [eia.gov/opendata](https://www.eia.gov/opendata/)) |
+| `MAPBOX_ACCESS_TOKEN` | Your Mapbox token |
+
+### Kerberos authentication
+
+Run `kinit` to initialize your credentials so the Python scripts can connect to the SQL server:
+
+```bash
+kinit <AD user>@ISCO-PIPE.LOCAL
+```
+
+### Install Python dependencies
+
+The repo includes an npm script that creates a venv and installs packages:
+
+```bash
+npm run python:install
+```
+
+This runs `python3 -m venv scripts/python/.venv` and installs the packages listed in `scripts/python/requirements.txt`, which includes `pandas`, `SQLAlchemy`, `pyodbc`, `geopy`, and `requests`.
+
+<Note>
+  The services use `sh` to activate the venv, so the Python setup is intended for Linux. Venv has PowerShell support, but the scripts are not configured for Windows at this time.
+</Note>
+
+## Running tests
+
+The test suite uses Jest with `ts-jest` and runs in a Node environment.
+
+```bash
+npm test
+```
+
+Key test settings from `jest.config.js`:
+
+- `maxWorkers: "50%"` limits concurrency.
+- `workerIdleMemoryLimit: "512MB"` recycles workers that grow too large.
+- ESM-only dependencies under `sanitize-html` are transpiled automatically so Jest can require them.
+
+Coverage is written to `coverage/` in lcov and text formats.
+
+## Project scripts reference
+
+| Script | Command | Purpose |
+| --- | --- | --- |
+| `dev` | `npx ts-node-dev --respawn --transpile-only src/server.ts` | Start the local dev server with hot reload |
+| `build` | `npm run clean && tsc` | Compile TypeScript to `dist/` |
+| `start` | `node dist/server.js` | Run the compiled production server |
+| `test` | `npx jest` | Run the Jest test suite |
+| `python:install` | Create venv and `pip install -r scripts/python/requirements.txt` | Install Python dependencies for rental mobilization |
+| `deploy` | `npm run python:install && npm run build && pm2 reload ecosystem.config.js` | Full production deploy (build + PM2 reload) |
+| `generate:openapi` | `node --loader ts-node/esm scripts/generate-openapi.js` | Generate OpenAPI spec from source annotations |
+
+## Next steps
+
+- [Add a new service](/pipeline/services/adding-a-service)
+- [Deploy to production](/pipeline/services/deployment)
+- [Explore the endpoints](/pipeline/services/endpoints)

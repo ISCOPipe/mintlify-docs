@@ -1,1 +1,123 @@
+---
+title: "Deploy Pipeline Services API builds with GitHub Actions and PM2"
+sidebarTitle: "Deployment"
+description: "Deploy the Pipeline Services API from GitHub Actions to a self-hosted server. Learn how the build, smoke tests, and PM2 reload work across the main and azure_auth branches."
+---
 
+The Pipeline Services API deploys automatically from GitHub Actions to a self-hosted server. Merges to `main` deploy the primary service, and a sync workflow keeps the `azure_auth` branch up to date and deployed in parallel. This page covers the build pipeline, the smoke test gate, and how the service runs under PM2 in production.
+
+## Build and deploy workflow
+
+The `Deploy to Server` workflow (`.github/workflows/deploy.yml`) runs when a pull request into `main` or `azure_auth` is merged.
+
+<Steps>
+  <Step title="SSH into the target server">
+    The workflow connects using `SSH_KEY`, `SSH_USER`, `SSH_HOST`, and `HOST_PORT` from repository secrets.
+  </Step>
+  <Step title="Fetch and reset the target branch">
+    It runs `git fetch origin <branch>` and `git reset --hard origin/<branch>` in the deploy directory.
+  </Step>
+  <Step title="Install dependencies and deploy">
+    It runs `npm ci` followed by `npm run deploy`, which builds the TypeScript project and reloads the PM2 process.
+  </Step>
+</Steps>
+
+The deploy directory depends on the branch:
+
+| Branch | Deploy directory |
+| --- | --- |
+| `main` | `/opt/tapis` |
+| `azure_auth` | `/opt/tapis_authed` |
+
+## What `npm run deploy` does
+
+The `deploy` script in `package.json` chains three steps:
+
+1. `npm run python:install` — creates a Python virtual environment in `scripts/python/.venv` and installs the requirements in `scripts/python/requirements.txt`.
+2. `npm run build` — cleans `dist/` and compiles TypeScript with `tsc`.
+3. `pm2 reload ecosystem.config.js` — reloads the PM2 application without dropping connections.
+
+## PM2 configuration
+
+The `ecosystem.config.js` file defines a single PM2 app:
+
+```javascript
+module.exports = {
+  apps: [
+    {
+      name: 'sneak-peak-autoapi-server',
+      script: './dist/server.js',
+      watch: ['dist'],
+      instances: 1,
+      exec_mode: 'cluster',
+      env: {
+        NODE_ENV: 'production'
+      }
+    }
+  ]
+};
+```
+
+PM2 watches the `dist` folder for changes and reloads the process automatically after a new build is deployed.
+
+## PR smoke tests
+
+The `PR Smoke Test` workflow (`.github/workflows/pr-smoke-test.yml`) runs on every pull request into `main` that has at least one approval. It is a required safety gate before merge.
+
+<Steps>
+  <Step title="Check for approval">
+    The workflow inspects the latest review state per user and only proceeds if at least one reviewer has approved the PR.
+  </Step>
+  <Step title="Check out and merge the PR branch">
+    On the smoke test server, the workflow fetches the PR branch, checks it out, and merges `origin/main` into it to verify there are no conflicts.
+  </Step>
+  <Step title="Build and start a temporary PM2 process">
+    It installs dependencies, runs `npm run build`, generates the OpenAPI spec if the `generate:openapi` script exists, and starts a temporary PM2 process named `pr-<number>` on port `40000`.
+  </Step>
+  <Step title="Run health and smoke checks">
+    The workflow polls `/api/v1/health` until it returns HTTP 200, then calls `/api/v1/health/smoketest`. If either check fails, the workflow prints the last lines of the PM2 error and output logs and exits with an error.
+  </Step>
+</Steps>
+
+If the smoke test passes, the PR can be merged and the deploy workflow will run.
+
+## Syncing main to azure_auth
+
+The `Sync main to azure_auth` workflow (`.github/workflows/sync-azure-auth.yml`) keeps the `azure_auth` branch in sync with `main` after every merge to `main`.
+
+1. It checks out `azure_auth`, fetches `main`, and attempts a merge.
+2. If the merge succeeds and pushes cleanly, it triggers the `Deploy to Server` workflow for the `azure_auth` branch.
+3. If there are merge conflicts, it opens (or updates) a pull request from `main` into `azure_auth` so the team can resolve them manually.
+
+<Warning>
+  The `azure_auth` branch and its sync workflow are temporary. They will be deprecated once the azure auth changes are merged into `main`.
+</Warning>
+
+## SonarQube
+
+The repository includes a `sonar-project.properties` file configured for a local SonarQube instance:
+
+| Property | Value |
+| --- | --- |
+| `sonar.projectKey` | `tapis` |
+| `sonar.projectName` | `Hot Reload APIs` |
+| `sonar.projectVersion` | `0.23` |
+| `sonar.host.url` | `http://localhost:9000` |
+| `sonar.junit.reportPath` | `./reports/junit/junit.xml` |
+
+The project expects JUnit reports at `./reports/junit/junit.xml` for test coverage import.
+
+## Required repository secrets
+
+Set these under **Settings > Secrets and variables > Actions** in `iscopipe/services_hot_reload`:
+
+| Secret | Purpose |
+| --- | --- |
+| `SSH_KEY` | Private key for SSH access to the deploy server |
+| `SSH_USER` | SSH user name |
+| `SSH_HOST` | Server IP or hostname |
+| `HOST_PORT` | SSH port |
+
+<Tip>
+  The deploy and smoke test workflows both run on a self-hosted runner that must have `pm2`, `node`, `npm`, and `git` available.
+</Tip>

@@ -1,1 +1,229 @@
+---
+title: "Add a new endpoint to the Pipeline Services API"
+sidebarTitle: "Adding a Service"
+description: "Learn how to add a new REST endpoint to the Pipeline Services API by following the conventions used by the employee search and disable features."
+---
 
+The Pipeline Services API (Node/TypeScript in `iscopipe/services_hot_reload`) auto-discovers route files under `src/api/`. This guide walks you through adding a new endpoint from scratch, using the existing employee search and disable features as a model. By the end you will have a validated route, a controller, a service module, an interface with Zod schemas, and tests.
+
+## Conventions at a glance
+
+| Layer | Folder | Responsibility |
+| --- | --- | --- |
+| Route | `src/api/` | Express router with OpenAPI annotations |
+| Controller | `src/controllers/` | Validate input, call services, return JSON |
+| Service | `src/services/<feature>/` | Business logic, DB queries, external calls |
+| Interface | `src/interfaces/` | Zod schemas and derived TypeScript types |
+| Test | `tests/` | Supertest against the router with mocked services |
+
+## Step 1: Define the interface and Zod schemas
+
+Create `src/interfaces/shifts.ts` (or the domain you are building). Zod schemas give you both runtime validation and static types.
+
+```typescript src/interfaces/shifts.ts
+import { z } from 'zod';
+
+export const ShiftRequestSchema = z.object({
+  employee_id: z.string().min(1, 'employee_id is required').max(12),
+  shift_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'shift_date must be YYYY-MM-DD'),
+});
+
+export const ShiftResultSchema = z.object({
+  employee_id: z.string(),
+  shift_date: z.string(),
+  start_time: z.string(),
+  end_time: z.string(),
+  department: z.string(),
+});
+
+export type ShiftRequest = z.infer<typeof ShiftRequestSchema>;
+export type ShiftResult = z.infer<typeof ShiftResultSchema>;
+```
+
+The employee interface (`src/interfaces/employees.ts`) follows the same pattern: one `ZodSchema` per endpoint, with `.optional()` for query params and `.min(1)` for required body fields.
+
+## Step 2: Write the service module
+
+Create `src/services/shift/lookup.ts`. Services own all business logic and data access. For SQL Server, import `getPool` from `../../worker/mssql_connection` and use parameterized requests.
+
+```typescript src/services/shift/lookup.ts
+import mssql from 'mssql';
+import { getPool } from '../../worker/mssql_connection';
+import { ShiftRequest, ShiftResult } from '../../interfaces/shifts';
+
+const TABLE = '[IT].[dbo].[EmployeeShifts]';
+
+export async function findShifts(params: ShiftRequest): Promise<ShiftResult[]> {
+  const pool = await getPool('IT');
+  const result = await pool.request()
+    .input('employee_id', mssql.VarChar(12), params.employee_id)
+    .input('shift_date', mssql.Date, params.shift_date)
+    .query(`
+      SELECT EmployeeID as employee_id, ShiftDate as shift_date,
+             StartTime as start_time, EndTime as end_time, Department as department
+      FROM ${TABLE}
+      WHERE EmployeeID = @employee_id AND ShiftDate = @shift_date
+    `);
+
+  return result.recordset as ShiftResult[];
+}
+```
+
+For a more complex example with transactions and error codes, see `src/services/employee/disable.ts`. It checks for an existing active record before inserting, rolls back on conflict, and throws an error with `code: 'CONFLICT'` so the controller can map it to HTTP 409.
+
+## Step 3: Create the controller
+
+Create `src/controllers/shifts.ts`. Controllers extract and validate parameters with `extractParams`, call the service, and handle errors.
+
+```typescript src/controllers/shifts.ts
+import { Request, Response } from 'express';
+import { ShiftRequestSchema } from '../interfaces/shifts';
+import { extractParams, ParamValidationError } from '../utils/extract_request_params';
+import { findShifts } from '../services/shift/lookup';
+
+export async function get_shifts(req: Request, res: Response) {
+  try {
+    const params = extractParams(req, ShiftRequestSchema);
+    const results = await findShifts(params);
+    res.json(results);
+  } catch (err) {
+    if (err instanceof ParamValidationError) {
+      res.status(400).json({ error: err.message, issues: err.issues });
+      return;
+    }
+    console.error('Error in get_shifts:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+```
+
+The employee controller (`src/controllers/employees.ts`) shows the same pattern for multiple endpoints, including mapping `CONFLICT` to 409 and `NOT_FOUND` to 404.
+
+## Step 4: Register the route
+
+Create `src/api/shifts.ts`. The router name becomes the URL path: `shifts.ts` mounts at `/api/v1/shifts`. Add OpenAPI JSDoc comments so Swagger picks it up.
+
+```typescript src/api/shifts.ts
+import { Router } from 'express';
+import { get_shifts } from '../controllers/shifts';
+
+const router = Router();
+
+/**
+ * @openapi
+ * /api/v1/shifts:
+ *   get:
+ *     summary: Look up employee shifts
+ *     tags:
+ *       - Shifts
+ *     parameters:
+ *       - in: query
+ *         name: employee_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: EMP001234
+ *       - in: query
+ *         name: shift_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "2025-01-15"
+ *     responses:
+ *       200:
+ *         description: Array of shift records
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/', get_shifts);
+
+export default router;
+```
+
+`src/server.ts` auto-loads every file in `src/api/` at startup, so no manual registration is needed.
+
+## Step 5: Add tests
+
+Create `tests/shifts.test.ts`. Mock the service so tests stay fast and isolated.
+
+```typescript tests/shifts.test.ts
+import request from 'supertest';
+import express from 'express';
+import shiftsRouter from '../src/api/shifts';
+import { findShifts } from '../src/services/shift/lookup';
+
+jest.mock('../src/services/shift/lookup', () => ({
+  findShifts: jest.fn(),
+}));
+
+const mockFindShifts = findShifts as jest.MockedFunction<typeof findShifts>;
+
+const app = express();
+app.use(express.json());
+app.use('/api/v1/shifts', shiftsRouter);
+
+describe('GET /api/v1/shifts', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns 200 with shift records', async () => {
+    mockFindShifts.mockResolvedValue([
+      {
+        employee_id: 'EMP001234',
+        shift_date: '2025-01-15',
+        start_time: '08:00',
+        end_time: '17:00',
+        department: 'Fabrication',
+      },
+    ]);
+
+    const response = await request(app)
+      .get('/api/v1/shifts')
+      .query({ employee_id: 'EMP001234', shift_date: '2025-01-15' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveLength(1);
+    expect(response.body[0].department).toBe('Fabrication');
+  });
+
+  it('returns 400 for missing required fields', async () => {
+    const response = await request(app).get('/api/v1/shifts').query({});
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Validation failed');
+  });
+});
+```
+
+For a larger example, see `tests/employee_disable.test.ts`, which covers 201, 400, 409, and 500 responses.
+
+## Step 6: Run the tests and verify locally
+
+```bash
+npm test -- shifts.test.ts
+```
+
+Start the dev server and confirm the route appears in Swagger at `http://localhost:4443/docs`.
+
+```bash
+npm run dev
+```
+
+<Tip>
+  If you add a WebSocket instead of a REST endpoint, place the file in `src/websockets/` and export a function named `setup<Filename>WebSocket`. `src/server.ts` auto-discovers it the same way it discovers API routes.
+</Tip>
+
+## What to avoid
+
+- Do not write business logic in the controller. Keep controllers thin: validate, call service, return.
+- Do not construct SQL with string interpolation. Always use `mssql` parameterized inputs.
+- Do not skip the Zod schema. `extractParams` relies on it for both typing and runtime validation.
+- Do not forget to export the router as `default` in `src/api/<name>.ts`. The dynamic loader in `src/server.ts` requires it.
