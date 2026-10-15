@@ -1,1 +1,298 @@
+---
+title: "Build and mount React apps inside Pipeline PHP pages"
+sidebarTitle: "React Apps"
+description: "Create Vite entry points in react-src/, read data attributes from PHP host pages, and mount React bundles into the DOM with createRoot."
+---
 
+Pipeline's newer screens are React 19 apps built with Vite and embedded into existing PHP pages. Each app has its own entry point in `react-src/`, compiles to a single `.js` bundle in `dist/`, and mounts into a DOM node that the host PHP page provides. This page covers the entry point pattern, shared components, how PHP passes data into React, and how to add a new screen from scratch.
+
+## Entry point pattern
+
+Every React screen starts with a `.jsx` file in `react-src/` that imports a component and mounts it with `ReactDOM.createRoot`. The mount target is a `<div>` rendered by the host PHP page.
+
+A typical entry point, from `react-src/dc_fab_queue.jsx`:
+
+```jsx
+import React from "react";
+import { createRoot } from "react-dom/client";
+import DcFabQueue from "./components/dc_fab_queue/DcFabQueue.jsx";
+
+function mount(id = "dc-fab-queue") {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  const username = el.dataset.username || "";
+  const canAdd = el.dataset.canAdd === "1";
+
+  createRoot(el).render(<DcFabQueue username={username} canAdd={canAdd} />);
+}
+
+mount();
+```
+
+The host PHP page, `warehouse/dc_fab_queue.php`, renders the mount node and loads the built bundle:
+
+```php
+<?php
+$can_add = array_intersect([Role::GLOBAL_ADMIN, Role::SHIPPING_ADMIN, ROLE::MANAGE_SHIPPING_QUEUES], $role_id_list) ? '1' : '0';
+?>
+
+<div id="dc-fab-queue" data-username="<?php echo htmlspecialchars($username); ?>" data-can-add="<?php echo $can_add; ?>"></div>
+
+<script type="module" src="/dist/dc_fab_queue.js"></script>
+```
+
+## Reading data attributes from PHP
+
+React entry points read server-side values from `data-*` attributes on the mount node. Because HTML lowercases attribute names, `data-custName` becomes `dataset.custname`. The `quote_builder.jsx` entry point shows a robust pattern for parsing strings, numbers, and JSON:
+
+```jsx
+const rootElement = document.getElementById("quote-builder");
+
+if (rootElement) {
+  const parseJson = (value, fallback) => {
+    if (!value) return fallback;
+    try { return JSON.parse(value); } catch { return fallback; }
+  };
+
+  const parseString = (value, fallback = "") => {
+    if (!value) return fallback;
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed === "string" ? parsed : String(parsed);
+    } catch { return value; }
+  };
+
+  const initialData = {
+    customerCode: rootElement.dataset.cust ?? "",
+    companyId: rootElement.dataset.co ?? "",
+    customerName: rootElement.dataset.custname ?? rootElement.dataset.custName ?? "",
+    username: parseString(rawUsername, ""),
+    user_role_ids: parseJson(rootElement.dataset.user_role_ids, []),
+    currentUser: parseJson(rootElement.dataset.current_user, {}),
+    body: parseJson(rootElement.dataset.body, {}),
+    primaryTeam: parseJson(rootElement.dataset.primary_team, {}),
+    currentTeam: parseJson(rootElement.dataset.current_team, {}),
+    status: parseString(rootElement.dataset.status, ""),
+  };
+
+  ReactDOM.createRoot(rootElement).render(
+    <StrictMode>
+      <QuoteBuilderPage initialData={initialData} />
+    </StrictMode>
+  );
+}
+```
+
+The host PHP page in `sales/parrot.php` sets those attributes before the bundle loads:
+
+```php
+<div id="quote-builder"
+  data-current_user='<?php echo json_encode($written_by_prelude_key); ?>'
+  data-cust="<?php echo htmlspecialchars($CustomerCode, ENT_QUOTES, 'UTF-8'); ?>"
+  data-co="<?php echo htmlspecialchars($CompanyID, ENT_QUOTES, 'UTF-8'); ?>"
+  data-custName="<?php echo htmlspecialchars($CustomerName, ENT_QUOTES, 'UTF-8'); ?>"
+  data-body='<?php echo $dataBody; ?>'
+  data-user_role_ids='<?php echo json_encode($role_id_list); ?>'
+></div>
+
+<script type="module" src="/dist/quote_builder.js"></script>
+```
+
+## Progressive enhancement and dynamic mounting
+
+Some apps do not mount immediately on load. `vendor_quote_review.jsx` binds a click handler to a PHP-rendered button and replaces the page content dynamically:
+
+```jsx
+window.mountVendorQuoteReview = function mountVendorQuoteReview(targetId = 'page-content') {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+
+  // Preserve original PHP content for back navigation
+  if (!window.__vendorQuoteOriginal) {
+    window.__vendorQuoteOriginal = el.innerHTML;
+  }
+
+  el.innerHTML = '<div id="react-vendor-quote-review" class="w-100"></div>';
+  const rootEl = document.getElementById('react-vendor-quote-review');
+  const root = ReactDOM.createRoot(rootEl);
+
+  root.render(
+    <VendorQuoteTable
+      readOnly={!!(window.vendorQuoteContext && window.vendorQuoteContext.readOnly)}
+      onBack={() => {
+        // Restore original PHP content
+        el.innerHTML = window.__vendorQuoteOriginal || '';
+        delete window.__vendorQuoteOriginal;
+        bindLaunchButton();
+      }}
+    />
+  );
+};
+```
+
+The host PHP page in `task/wf_procurement_request.php` provides both the button and a global context object:
+
+```php
+<button type="button" id="show_supplier_quote_review">Review Supplier Quotes</button>
+
+<script>
+  window.vendorQuoteContext = {
+    companyId: '<?php echo($co); ?>',
+    addedby: '<?php echo($username); ?>',
+    readOnly: <?php echo $isOpen ? 'false' : 'true'; ?>
+  };
+</script>
+<script type="module" src="/dist/vendor_quote_review.js"></script>
+```
+
+## Shared components and services
+
+Reusable React code lives in `react-src/components/` and `react-src/services/`. Each screen has its own component folder, but patterns are consistent across apps.
+
+### Component folders
+
+| Folder | Screen | Notable files |
+| --- | --- | --- |
+| `components/search/` | Global search | `SearchBar.jsx`, `SearchResults.jsx`, `FilterCard.jsx` |
+| `components/knowledge_mgt/` | Knowledge management | `main.jsx`, `AppLayout.jsx` |
+| `components/quote_builder/` | Parrot quote builder | `lib/quote_builder_page.jsx`, `lib/render/jobs_screen.jsx` |
+| `components/event_log/` | Event timeline | `Timeline.jsx` |
+| `components/dc_fab_queue/` | DC fabrication queue | `DcFabQueue.jsx` |
+| `components/fab_dc_queue/` | Fabrication DC queue | `FabDcQueue.jsx` |
+| `components/bin_label_print/` | Bin label printing | `BinLabelPrint.jsx` |
+| `components/vendor_quote/` | Vendor quote review | `Table.jsx` |
+
+### Service modules
+
+| Folder | Purpose |
+| --- | --- |
+| `services/search/` | Typeahead and reranked search hooks (`useTypeaheadSearch.js`, `useRerankSearch.js`) |
+| `services/queue/` | Queue data fetching helpers |
+| `services/bin_label_print/` | Label print API wrappers |
+
+For example, `services/search/useTypeaheadSearch.js` fetches from the Pathfinder product search API:
+
+```js
+fetch('https://pathfinder.isco-pipe.com:4443/api/v1/product_search', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  signal: controller.signal,
+  body: JSON.stringify({
+    query: query.trim(),
+    size: 10,
+    page: 1,
+    obsolete: false,
+  }),
+})
+```
+
+## Vite configuration
+
+The build is configured in `vite.config.js` at the repo root. Vite treats `react-src/` as the source root and writes compiled bundles to `dist/`.
+
+```js
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
+
+export default defineConfig({
+  plugins: [react()],
+  root: 'react-src',
+  build: {
+    outDir: resolve(__dirname, 'dist'),
+    emptyOutDir: false,
+    watch: process.env.CI ? null : {
+      exclude: ['**/dist/**', '**/.vite/**', '**/node_modules/**']
+    },
+    rollupOptions: {
+      input: {
+        search: resolve(__dirname, 'react-src/search.jsx'),
+        knowledge_mgt: resolve(__dirname, 'react-src/knowledge_mgt.jsx'),
+        event_log: resolve(__dirname, 'react-src/event_log.jsx'),
+        vendor_quote_review: resolve(__dirname, 'react-src/vendor_quote_review.jsx'),
+        quote_builder: resolve(__dirname, 'react-src/quote_builder.jsx'),
+        dc_fab_queue: resolve(__dirname, 'react-src/dc_fab_queue.jsx'),
+        fab_dc_queue: resolve(__dirname, 'react-src/fab_dc_queue.jsx'),
+        bin_label_print: resolve(__dirname, 'react-src/bin_label_print.jsx'),
+      },
+      output: {
+        entryFileNames: '[name].js',
+      },
+    },
+  }
+});
+```
+
+Key settings:
+
+- `root: 'react-src'` — all entry paths are relative to this folder.
+- `outDir: resolve(__dirname, 'dist')` — compiled bundles land at the repo root in `dist/`.
+- `emptyOutDir: false` — prevents Vite from deleting unrelated files in `dist/`.
+- `watch` — enabled outside CI, so local edits rebuild automatically.
+- `entryFileNames: '[name].js'` — produces `search.js`, `quote_builder.js`, and so on.
+
+## Dev and build commands
+
+The `package.json` script delegates to Vite:
+
+```json
+{
+  "scripts": {
+    "compile:react": "vite build"
+  }
+}
+```
+
+Run the build locally:
+
+```bash
+npm run compile:react
+```
+
+Outside CI, Vite stays in watch mode because of the `watch` block in `vite.config.js`. In CI, the `compile_react.yaml` workflow builds on a Linux runner and deploys the `dist/` folder to the Windows server. See [Deployment](/pipeline/deployment) for details.
+
+## Add a new entry point
+
+To add a new React screen to Pipeline, follow these steps.
+
+<Steps>
+  <Step title="Create the component folder">
+    Add a new folder under `react-src/components/` for your screen's React components.
+  </Step>
+  <Step title="Write the entry point">
+    Create a `.jsx` file in `react-src/` that imports your top-level component and mounts it into a DOM node by ID. Read any server data from `dataset` attributes on that node.
+  </Step>
+  <Step title="Register the entry in Vite">
+    Add the new file to `rollupOptions.input` in `vite.config.js`:
+
+    ```js
+    rollupOptions: {
+      input: {
+        // existing entries...
+        my_new_screen: resolve(__dirname, 'react-src/my_new_screen.jsx'),
+      },
+      output: { entryFileNames: '[name].js' }
+    }
+    ```
+  </Step>
+  <Step title="Build the bundle">
+    Run `npm run compile:react` to generate `dist/my_new_screen.js`.
+  </Step>
+  <Step title="Mount it from PHP">
+    In the host PHP page, render a `<div>` with the target ID and any `data-*` attributes, then load the bundle:
+
+    ```php
+    <div id="my-new-screen" data-user="<?php echo htmlspecialchars($username); ?>"></div>
+    <script type="module" src="/dist/my_new_screen.js"></script>
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Never edit files in `dist/` directly. They are generated by Vite and overwritten on every build. Always change source in `react-src/` and rebuild.
+</Warning>
+
+<Tip>
+  If your app needs to restore original PHP content after replacing it (like `vendor_quote_review.jsx`), store the original HTML in a global variable before calling `createRoot`, and restore it in the `onBack` callback.
+</Tip>
