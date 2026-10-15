@@ -14,7 +14,8 @@
         "group": "Getting Started",
         "pages": [
           "index",
-          "quickstart"
+          "quickstart",
+          "architecture"
         ]
       },
       {
@@ -22,22 +23,58 @@
         "pages": [
           "pipeline/overview",
           "pipeline/local-setup",
-          "pipeline/deployment"
+          "pipeline/project-structure",
+          "pipeline/authentication",
+          "pipeline/data-access",
+          "pipeline/modules",
+          "pipeline/react-apps",
+          "pipeline/deployment",
+          {
+            "group": "Services API",
+            "pages": [
+              "pipeline/services/overview",
+              "pipeline/services/local-setup",
+              "pipeline/services/endpoints",
+              "pipeline/services/adding-a-service",
+              "pipeline/services/deployment"
+            ]
+          }
         ]
       },
       {
         "group": "Parrot",
         "pages": [
           "parrot/overview",
+          "parrot/user-guide",
+          "parrot/matching-pipeline",
           "parrot/worker-setup",
-          "parrot/orchestration-setup"
+          "parrot/configuration",
+          "parrot/orchestration-api",
+          "parrot/orchestration-setup",
+          "parrot/testing-and-evaluation"
         ]
       },
       {
         "group": "QMD",
         "pages": [
           "qmd/overview",
-          "qmd/setup"
+          "qmd/setup",
+          "qmd/field-app",
+          "qmd/web-portal",
+          "qmd/api",
+          "qmd/background-services"
+        ]
+      },
+      {
+        "group": "Navigator",
+        "pages": [
+          "navigator/overview",
+          "navigator/user-guide",
+          "navigator/app-setup",
+          "navigator/app-architecture",
+          "navigator/services-setup",
+          "navigator/services-api",
+          "navigator/deployment"
         ]
       }
     ]
