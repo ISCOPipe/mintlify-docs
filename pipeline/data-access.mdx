@@ -1,1 +1,161 @@
+---
+title: "Pipeline data access: SQL Server, MySQL, and connection patterns"
+sidebarTitle: "Data Access"
+description: "Query SQL Server over ODBC from PHP using the Prelude ERP and IT databases, include shared connection files, and follow safe query patterns used across Pipeline."
+---
 
+Pipeline pages read and write data through two main database systems: SQL Server (accessed via ODBC for the Prelude ERP and the internal `IT` database) and MySQL (used by a small number of legacy features). This page explains the shared connection includes, how to run queries against each system, and the patterns the codebase uses to stay safe and consistent.
+
+## Connection includes
+
+Most pages include one or more shared connection files from `c:/xampp/inc/`. These files are not stored in the repo. Ask your team lead for the latest copies and place them in `c:/xampp/inc/` on your local machine.
+
+| Include file | Typical database | Used for |
+| --- | --- | --- |
+| `con_kore.php` | SQL Server (Prelude ERP) | Work orders, invoices, POs, inventory, customers, and warehouse data |
+| `con_itdb.php` | SQL Server (IT database) | Workflow activities, user roles, credit requests, attachments, and internal app tables |
+| `con_fvdb.php` | SQL Server | Field verification data (used in select features) |
+
+When a page needs data from both systems, include both files. For example, `accounting/invoice_detail.php` includes `con_itdb.php` for workflow records and `con_kore.php` for invoice line items.
+
+```php
+<?php
+include('c:/xampp/inc/con_itdb.php');
+include('c:/xampp/inc/con_kore.php');
+```
+
+## SQL Server via ODBC
+
+Pipeline uses the PHP ODBC extension to talk to SQL Server. The connection handles (`$con_kore`, `$con_itdb`) are created inside the include files and are ready to use after you include them.
+
+### Run a simple query
+
+The most common pattern is `odbc_exec()` followed by `odbc_fetch_row()` and `odbc_result()`:
+
+```php
+<?php
+include('c:/xampp/inc/con_kore.php');
+
+$q = "SELECT TOP (1) WONum, WOStatus, Descr
+      FROM [ISCO_PRELUDE].[dbo].[Wo]
+      WHERE WONum = '$wo_num'";
+
+$x = odbc_exec($con_kore, $q);
+
+while (odbc_fetch_row($x)) {
+    $woStatus = odbc_result($x, "WOStatus");
+    $descr    = odbc_result($x, "Descr");
+}
+```
+
+This pattern appears in `work_order_detail.php` and many other pages across the repo.
+
+### Parameterized queries with `odbc_prepare`
+
+For inserts, updates, or any query that accepts user input, use `odbc_prepare()` and `odbc_execute()` with bound parameters. This is the safest pattern in the codebase.
+
+```php
+<?php
+include('c:/xampp/inc/con_itdb.php');
+
+$q = "INSERT INTO [IT].[dbo].[wf_activity]
+      ([function_id], [series_id], [assignedto], [act_title], [act_desc])
+      OUTPUT INSERTED.wfact_id
+      VALUES (?, ?, ?, ?, ?)";
+
+$stmt = odbc_prepare($con_itdb, $q);
+$params = [104, 0, $assignto, $title, $description];
+
+if ($stmt && odbc_execute($stmt, $params) && odbc_fetch_row($stmt)) {
+    $newId = odbc_result($stmt, 'wfact_id');
+}
+```
+
+This example is based on `accounting/ap_discrepancy_create.php`, which uses prepared statements for both the `IT` and `ISCO_PRELUDE` databases.
+
+### Fetch a single row
+
+When you expect exactly one result, you can skip the `while` loop:
+
+```php
+$x = odbc_exec($con_itdb, $q);
+if (odbc_fetch_row($x)) {
+    $count = odbc_result($x, "activity_count");
+}
+```
+
+This pattern is common in `accounting/credit_request_functions.php` for loading header records and activity stats.
+
+## MySQL via MySQLi
+
+A small number of legacy classes connect to MySQL with `mysqli_connect()`. The `Classes/RSS.class.php` file shows the pattern:
+
+```php
+<?php
+require_once('pathto.../mysql_connect.php');
+
+$db = mysqli_connect(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME);
+$result = mysqli_query($db, "SELECT * FROM webref_rss_details");
+
+while ($row = mysqli_fetch_array($result)) {
+    $title = $row['title'];
+}
+```
+
+MySQL is not used for core ERP or workflow data. If you are building a new feature, prefer the ODBC/SQL Server path unless you are explicitly working inside a MySQL-only subsystem.
+
+## Shared helper functions
+
+`inc/functions.php` provides two helpers that wrap common ODBC tasks. Use them when you need JSON output or a downloadable TSV export.
+
+### `fetchJson($con, $q)`
+
+Runs a query and returns the rows as a JSON string. Throws on failure.
+
+```php
+require_once 'inc/functions.php';
+
+$json = fetchJson($con_itdb, "SELECT * FROM [IT].[dbo].[wf_activity] WHERE status = 1");
+echo $json;
+```
+
+### `exportTsv($con, $q, $outName)`
+
+Runs a query and streams the results as a tab-separated file download.
+
+```php
+require_once 'inc/functions.php';
+
+exportTsv($con_kore, "SELECT WONum, WOStatus FROM [ISCO_PRELUDE].[dbo].[Wo]", "work_orders.tsv");
+```
+
+## Safety tips
+
+1. **Always use `odbc_prepare` for user input.** Direct string concatenation into `odbc_exec()` is common in older pages, but new code should bind parameters.
+2. **Never commit connection files.** `con_kore.php`, `con_itdb.php`, and `con_fvdb.php` contain server names and credentials. They live in `c:/xampp/inc/` and are ignored by Git.
+3. **Escape output, not just input.** When echoing database values into HTML, use `htmlspecialchars()` to prevent XSS.
+4. **Free results when done.** Call `odbc_free_result($rs)` after large loops or when you are finished with a statement handle, especially in long-running scripts.
+5. **Check for errors.** `odbc_exec()` returns `false` on failure. Test the result before calling `odbc_fetch_row()`:
+
+```php
+$rs = odbc_exec($con_itdb, $q);
+if (!$rs) {
+    throw new Exception("Query failed: " . odbc_errormsg($con_itdb));
+}
+```
+
+## Common query patterns
+
+| Task | Pattern | Example source |
+| --- | --- | --- |
+| Select one row | `odbc_exec` + `odbc_fetch_row` + `odbc_result` | `work_order_detail.php` |
+| Select many rows | `odbc_exec` + `while (odbc_fetch_row)` | `_sales_dashboard.php` |
+| Insert with output | `odbc_prepare` + `odbc_execute` + `odbc_result('INSERTED.col')` | `ap_discrepancy_create.php` |
+| Update or delete | `odbc_prepare` + `odbc_execute` | `reason_code_update.php` |
+| JSON API response | `fetchJson($con, $q)` | `inc/functions.php` |
+| File export | `exportTsv($con, $q, $name)` | `inc/functions.php` |
+
+## Next steps
+
+- To understand how authentication and sessions are set up before any query runs, see [Authentication](/pipeline/authentication).
+- To add a new database-driven page, start from [Project Structure](/pipeline/project-structure) to find the right department folder, then include `inc/env.php` and the relevant connection file.
