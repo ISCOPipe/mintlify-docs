@@ -1,1 +1,703 @@
+---
+title: "Parrot orchestration API endpoint reference"
+sidebarTitle: "Orchestration API"
+description: "Complete endpoint reference for the Parrot orchestration frontend and service contracts: routes, methods, auth, request/response shapes, and which ones the Pipeline UI calls."
+---
 
+The Parrot orchestration layer is two AWS Chalice Lambda apps in `iscopipe/quote_builder_orchestration`:
+
+- **frontend-contract** (`orchestration-frontend-contract`): public API consumed by the Pipeline React UI.
+- **service-contract** (`orchestration-service-contract`): internal API the worker calls to report progress and results.
+
+Both apps share the same auth model and DynamoDB jobs table. This page lists every route, its purpose, key parameters, and the response shape. Routes are grouped by the Chalice Blueprint that owns them.
+
+<Warning>
+  The repo contains committed API keys and credentials. Do not copy secret values from the source. Obtain tokens and passwords from the team's secret store or a teammate.
+</Warning>
+
+## Base URLs and auth
+
+The Pipeline UI resolves the environment at runtime (`lib/api/quote_builder_api_config.js`):
+
+| Environment | Base URL |
+| --- | --- |
+| Prod | `https://wt5w9ez7d3.execute-api.us-east-2.amazonaws.com/api/` |
+| Dev | `https://o1dtfmh5zf.execute-api.us-east-2.amazonaws.com/api/` |
+
+Every request must include:
+
+```http
+Authorization: Bearer <api_key>
+```
+
+The API key is stored in AWS SSM Parameter Store under `SSM_PARAMETER_PREFIX` (see [Orchestration Setup](/parrot/orchestration-setup)). The authorizer lives in `chalicelib/auth.py` and rejects any request where the stripped token does not match `deps.aws().config.api_key`.
+
+## Pagination cursors
+
+List endpoints return an opaque `next_cursor` string. Cursors are base64-encoded JSON objects that include the DynamoDB `LastEvaluatedKey` plus the original filter values (`team_id`, `status`). Sending a cursor with mismatched filters returns `400 VALIDATION_ERROR`.
+
+Decode logic is in `chalicelib/cursors.py`:
+
+- `encode_cursor(key)` / `decode_cursor(cursor)` for generic cursors.
+- `encode_list_jobs_cursor(key, team_id, status, partition)` / `decode_list_jobs_cursor(cursor)` for the jobs list.
+
+## Error response shape
+
+All non-2xx responses return a consistent body built by `chalicelib/responses.py`:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "...",
+    "details": { ... }
+  }
+}
+```
+
+## Frontend contract routes
+
+### Jobs (`chalicelib/blueprints/jobs.py`)
+
+<AccordionGroup>
+  <Accordion title="POST /v1/jobs — Create job">
+    **Purpose**: Register a new quote job and return presigned S3 PUT URLs for file upload.
+
+    **Body** (`CreateJobRequest`):
+
+    ```json
+    {
+      "company_id": "001",
+      "customer_id": "CUST12345",
+      "written_by": "CANALS",
+      "team_id": "t_south_central",
+      "ship_to_address_one": "123 Main St",
+      "files": [
+        {
+          "file_name": "quote_request.pdf",
+          "file_ext": ".pdf",
+          "content_type": "application/pdf",
+          "size_bytes": 245991
+        }
+      ]
+    }
+    ```
+
+    **Response** (`201`):
+
+    ```json
+    {
+      "job_id": "job_A1B2C3...",
+      "status": "AWAITING_UPLOAD",
+      "created_at": "2025-01-15T12:34:56Z",
+      "uploads": [
+        {
+          "file_index": 0,
+          "file_name": "quote_request.pdf",
+          "method": "PUT",
+          "url": "https://...",
+          "headers": {"Content-Type": "application/pdf"},
+          "expires_at": "2025-01-15T12:49:56Z"
+        }
+      ]
+    }
+    ```
+
+    **Validation**:
+
+    - `file_ext` must be in `ALLOWED_FILE_EXTENSIONS` (`chalicelib/constants.py`).
+    - `size_bytes` must be between 1 and `MAX_FILE_SIZE_BYTES` (10 MB).
+
+    **Pipeline UI callers**: `lib/api/active_job_upload_runner.js`, `lib/render/active_job_api_screen.jsx`.
+  </Accordion>
+
+  <Accordion title="GET /v1/jobs — List jobs">
+    **Purpose**: Paginated job list for the Jobs screen.
+
+    **Query params**:
+
+    - `team_id` (optional): filter to one team's jobs.
+    - `status` (optional): bucket name (`awaiting_upload`, `running`, `succeeded`, `exported`, `abandoned`, `failed`).
+    - `limit` (default 50, max 200).
+    - `cursor` (optional): opaque pagination cursor.
+
+    **Response** (`200`):
+
+    ```json
+    {
+      "items": [
+        {
+          "job_id": "job_A1B2C3...",
+          "team_id": "118",
+          "team_name": "FL EAST",
+          "customer_id": "CUST12345",
+          "customer_name": "Acme Utilities",
+          "file_names": ["quote_request.pdf"],
+          "written_by": "CANALS",
+          "status": "SUCCEEDED",
+          "line_count": 12,
+          "confirmed_count": 8,
+          "no_match_count": 2,
+          "pending_count": 2,
+          "exported_to_prelude": false,
+          "locked": false,
+          "locked_by": null,
+          "abandoned": false
+        }
+      ],
+      "next_cursor": "eyJrZXkiOnsi..."
+    }
+    ```
+
+    **Pipeline UI callers**: `lib/hooks/useJobsLoader.js`, `lib/quote_builder_page.jsx`.
+  </Accordion>
+
+  <Accordion title="GET /v1/jobs/{job_id} — Get job detail">
+    **Purpose**: Full job payload for the Review screen. Only available when `status === SUCCEEDED`.
+
+    **Response** (`200`):
+
+    ```json
+    {
+      "job_id": "job_A1B2C3...",
+      "status": "SUCCEEDED",
+      "header": { "company_id": "001", "customer_id": "CUST12345", ... },
+      "summary": { "line_count": 12, "confirmed_count": 8, "no_match_count": 2, "pending_count": 2 },
+      "files": [...],
+      "lines": [...],
+      "exported_to_prelude": false,
+      "prelude_quote_id": null,
+      "locked": false,
+      "locked_by": null,
+      "abandoned": false
+    }
+    ```
+
+    **Errors**: `404 JOB_NOT_FOUND`, `409 JOB_NOT_SUCCEEDED`.
+
+    **Pipeline UI callers**: `lib/api/active_job_details_api.js`.
+  </Accordion>
+
+  <Accordion title="GET /v1/jobs/{job_id}/file — Download file">
+    **Purpose**: Return a presigned GET URL for one uploaded file.
+
+    **Query param**: `s3_key` (required).
+
+    **Response** (`200`):
+
+    ```json
+    { "url": "https://..." }
+    ```
+
+    **Errors**: `400 MISSING_S3_KEY`, `404 FILE_NOT_FOUND`.
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`downloadAttachment`).
+  </Accordion>
+
+  <Accordion title="POST /v1/jobs/{job_id}/submit — Submit job">
+    **Purpose**: Move a job from `AWAITING_UPLOAD` to `QUEUED` and dispatch it to SQS.
+
+    **Body**: `{}`
+
+    **Response** (`200`):
+
+    ```json
+    {
+      "job_id": "job_A1B2C3...",
+      "status": "QUEUED",
+      "submitted_at": "2025-01-15T12:34:56Z"
+    }
+    ```
+
+    **Errors**: `404 NOT_FOUND`, `409 INVALID_TRANSITION`.
+
+    **Pipeline UI callers**: `lib/api/active_job_upload_runner.js`.
+  </Accordion>
+
+  <Accordion title="POST /v1/jobs/{job_id}/lock — Lock job">
+    **Purpose**: Acquire or refresh an edit lock for a job.
+
+    **Body**:
+
+    ```json
+    { "user": "CANALS" }
+    ```
+
+    **Response**: `204 No Content` on success.
+
+    **Errors**: `404 JOB_NOT_FOUND`, `409 JOB_LOCKED` (another user holds it).
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`sendLockRequest`), heartbeat from `review_screen.jsx`.
+  </Accordion>
+</AccordionGroup>
+
+### Lines (`chalicelib/blueprints/lines.py`)
+
+<AccordionGroup>
+  <Accordion title="PUT /v1/jobs/{job_id}/lines — Add line">
+    **Purpose**: Insert a new line into a SUCCEEDED job at a requested position.
+
+    **Body** (`AddJobLinesRequest`):
+
+    ```json
+    {
+      "pos": 3,
+      "raw_line": "6-inch PVC pipe",
+      "qty": 100,
+      "uom": "FT"
+    }
+    ```
+
+    **Response**: `204 No Content`.
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`addLine`).
+  </Accordion>
+
+  <Accordion title="PATCH /v1/jobs/{job_id}/lines/{line_id} — Edit line">
+    **Purpose**: Apply a single line action: `confirm`, `no_match`, `reset`, or `edit`.
+
+    **Body by action**:
+
+    - **Confirm**:
+
+    ```json
+    {
+      "action": "confirm",
+      "isco_part_number": "T900-12-XXX",
+      "description": "6-inch PVC pipe"
+    }
+    ```
+
+    - **No match**:
+
+    ```json
+    { "action": "no_match" }
+    ```
+
+    - **Reset**:
+
+    ```json
+    { "action": "reset", "sell_uom": null }
+    ```
+
+    - **Edit**:
+
+    ```json
+    {
+      "action": "edit",
+      "sell_qty": 10,
+      "sell_uom": "FT"
+    }
+    ```
+
+    **Response**: `204 No Content`.
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`patchJobLineAction`, `confirmJobLine`, `noMatchJobLine`, `resetJobLine`, `saveSellQty`).
+  </Accordion>
+
+  <Accordion title="DELETE /v1/jobs/{job_id}/lines/{line_id} — Soft-delete line">
+    **Purpose**: Mark a line as deleted (removes it from summary counts).
+
+    **Response**: `204 No Content`.
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`softDeleteLine`).
+  </Accordion>
+
+  <Accordion title="POST /v1/jobs/{job_id}/lines/{line_id}/restore — Restore line">
+    **Purpose**: Undo a soft-delete.
+
+    **Response**: `204 No Content`.
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`restoreLine`).
+  </Accordion>
+
+  <Accordion title="POST /v1/jobs/{job_id}/lines/reset — Reset all lines">
+    **Purpose**: Return every line to `pending`.
+
+    **Body**: `{}`
+
+    **Response** (`200`):
+
+    ```json
+    {
+      "ok": true,
+      "job_id": "job_A1B2C3...",
+      "lines_reset": 10,
+      "summary": { "line_count": 12, "confirmed_count": 0, "no_match_count": 0, "pending_count": 12 }
+    }
+    ```
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`resetAllJobLines`).
+  </Accordion>
+</AccordionGroup>
+
+### Header (`chalicelib/blueprints/header.py`)
+
+<AccordionGroup>
+  <Accordion title="PATCH /v1/jobs/{job_id}/header — Edit header">
+    **Purpose**: Patch Prelude header fields on a SUCCEEDED job.
+
+    **Body** (`EditHeaderRequest`): any subset of these fields:
+
+    ```json
+    {
+      "company_id": "001",
+      "customer_id": "CUST12345",
+      "written_by": "CANALS",
+      "team_id": "118",
+      "ship_date": "2025-02-01",
+      "ship_to_id": "1000001234",
+      "ship_via": "UPS",
+      "ship_to_name": "Acme Utilities",
+      "ship_to_addr2": "Suite 200",
+      "ship_to_addr3": "",
+      "ship_to_city": "Louisville",
+      "ship_to_state": "KY",
+      "ship_to_postal_cd": "40202",
+      "ship_to_country": "US",
+      "sales_warehouse": "001",
+      "ship_warehouse": "001",
+      "customer_type": "MUNICIPAL",
+      "ship_to_address_one": "123 Main St",
+      "po_required": false,
+      "attention": "Jane Buyer",
+      "phone": "502-555-0100",
+      "order_comments": "Please call before delivery"
+    }
+    ```
+
+    **Response** (`200`):
+
+    ```json
+    {
+      "ok": true,
+      "job_id": "job_A1B2C3...",
+      "updated_at": "2025-01-15T12:34:56Z",
+      "header": { ... },
+      "abandoned": false
+    }
+    ```
+
+    **Errors**: `400 INVALID_COMPANY` (must be `001` or `070`), `404 JOB_NOT_FOUND`, `409 JOB_NOT_SUCCEEDED`.
+
+    **Pipeline UI callers**: `lib/api/prelude_header_api.js` (`postPreludeHeaderUpdate`).
+  </Accordion>
+</AccordionGroup>
+
+### Exports (`chalicelib/blueprints/exports.py`)
+
+<AccordionGroup>
+  <Accordion title="POST /v1/jobs/{job_id}/export/prelude — Export to Prelude">
+    **Purpose**: Send confirmed/no-match lines to Prelude via the Kore API.
+
+    **Body**: `{}`
+
+    **Response** (`200`):
+
+    ```json
+    {
+      "ok": true,
+      "job_id": "job_A1B2C3...",
+      "exported_lines": 10,
+      "skipped_pending_lines": 2,
+      "exported_to_prelude": true,
+      "exported_at": "2025-01-15T12:34:56Z",
+      "prelude_quote_id": "QTE123456"
+    }
+    ```
+
+    **Errors**:
+
+    - `409 ALREADY_EXPORTED`
+    - `409 NO_LINES_TO_EXPORT`
+    - `400 MISSING_REQUIRED_FIELDS` (Kore header fields empty)
+    - `502 PRELUDE_ERROR` (Kore API failure)
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`exportJobToPrelude`).
+  </Accordion>
+
+  <Accordion title="POST /v1/jobs/{job_id}/export/text — Export as text">
+    **Purpose**: Download a `.txt` file (or `.zip` for >200 lines) of exportable lines.
+
+    **Body**: `{}`
+
+    **Response**: `200` with `Content-Type: text/plain` or `application/zip` and `Content-Disposition: attachment; filename="parrot_job_{job_id}_export.txt"`.
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`exportJobAsText`).
+  </Accordion>
+
+  <Accordion title="POST /v1/jobs/{job_id}/validate — Validate before export">
+    **Purpose**: Check that every non-pending line has `sell_qty` and `sell_uom`.
+
+    **Body**: `{}`
+
+    **Response** (`200`):
+
+    ```json
+    {
+      "valid": true,
+      "exportable_line_count": 10,
+      "errors": []
+    }
+    ```
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`preludeExportValidation`).
+  </Accordion>
+</AccordionGroup>
+
+### Dashboard (`chalicelib/blueprints/dashboard.py`)
+
+<AccordionGroup>
+  <Accordion title="GET /v1/dashboard/summary — Dashboard summary">
+    **Purpose**: Return job counts per bucket, optionally scoped to a team and grouped by team.
+
+    **Query params**:
+
+    - `team_id` (optional)
+    - `group_by=team` (optional)
+    - `show_abandoned=true|false` (default `true`)
+    - `show_failed=true|false` (default `true`)
+
+    **Response** (`200`):
+
+    ```json
+    {
+      "total": 142,
+      "buckets": {
+        "awaiting_upload": 3,
+        "running": 8,
+        "succeeded": 45,
+        "exported": 78,
+        "abandoned": 5,
+        "failed": 3
+      },
+      "groups": [
+        { "group_key": "118", "group_label": "FL EAST", "total": 42, "buckets": { ... } }
+      ]
+    }
+    ```
+
+    **Notes**: Counts are eventually consistent because they read from GSIs. A `501 INDEX_NOT_AVAILABLE` is returned if the required GSI is missing.
+  </Accordion>
+</AccordionGroup>
+
+### Feedback (`chalicelib/blueprints/feedback.py`)
+
+<AccordionGroup>
+  <Accordion title="POST /v1/feedback — Submit feedback">
+    **Purpose**: Create an Azure DevOps work item from user feedback.
+
+    **Body** (`FeedbackRequest`) depends on `feedback_type`:
+
+    - **page**:
+
+    ```json
+    {
+      "feedback_type": "page",
+      "feedback": "The preview panel is too narrow.",
+      "page": "management",
+      "job_id": "job_A1B2C3..."
+    }
+    ```
+
+    - **header**:
+
+    ```json
+    {
+      "feedback_type": "header",
+      "feedback": "Ship via should default to UPS.",
+      "job_id": "job_A1B2C3...",
+      "field": "ship_via"
+    }
+    ```
+
+    - **lines**:
+
+    ```json
+    {
+      "feedback_type": "lines",
+      "feedback": "These lines should be kit items.",
+      "job_id": "job_A1B2C3...",
+      "lines": ["L1", "L3"]
+    }
+    ```
+
+    **Response** (`201`):
+
+    ```json
+    {
+      "work_item_id": 12345,
+      "url": "https://dev.azure.com/isco/.../_workitems/edit/12345"
+    }
+    ```
+
+    **Errors**: `400 VALIDATION_ERROR`, `502 AZURE_DEVOPS_ERROR`.
+
+    **Pipeline UI callers**: `lib/api/job_line_action_api.js` (`submitFeedback`).
+  </Accordion>
+</AccordionGroup>
+
+## Service contract routes
+
+The service contract (`orchestration-service-contract/app.py`) exposes three internal endpoints the worker calls. These are not used by the Pipeline UI.
+
+<AccordionGroup>
+  <Accordion title="POST /internal/jobs/{job_id}/status — Worker status update">
+    **Purpose**: Report progress while processing a job.
+
+    **Body** (`WorkerStatusUpdate`):
+
+    ```json
+    {
+      "worker_run_id": "run_abc123",
+      "status": "RUNNING",
+      "stage": "ocr",
+      "progress": { "pct": 42, "message": "Page 3 of 7" },
+      "lines_so_far": 8,
+      "at": "2025-01-15T12:34:56Z",
+      "lines": [...]
+    }
+    ```
+
+    **Response** (`200`):
+
+    ```json
+    { "ok": true }
+    ```
+
+    **Errors**: `409 INVALID_WORKER_RUN` (mismatched `worker_run_id`).
+
+    **Behavior**: The handler conditionally updates the job meta row only when `worker_run_id` matches. If `lines` is present, they are appended to `lines_partial`.
+  </Accordion>
+
+  <Accordion title="POST /internal/jobs/{job_id}/complete — Worker completion">
+    **Purpose**: Mark a job as finished and store extracted lines.
+
+    **Body** (`WorkerCompleteSuccess`):
+
+    ```json
+    {
+      "worker_run_id": "run_abc123",
+      "at": "2025-01-15T12:34:56Z",
+      "lines": [
+        {
+          "line_id": "L1",
+          "line_number": 1,
+          "raw_line": "6-inch PVC pipe",
+          "qty": 100,
+          "uom": "FT",
+          "candidates": [...]
+        }
+      ]
+    }
+    ```
+
+    **Response** (`200`):
+
+    ```json
+    { "ok": true }
+    ```
+
+    **Errors**: `422 VALIDATION_ERROR` (empty lines), `409 INVALID_TRANSITION`.
+
+    **Behavior**: The handler uses a three-phase claim pattern to prevent race conditions:
+
+    1. Claim: `RUNNING|COMPLETING -> COMPLETING` (must match `worker_run_id`).
+    2. Write lines with `batch_write_items`.
+    3. Commit: `COMPLETING -> SUCCEEDED` and remove `lines_partial`.
+
+    If the job is already `SUCCEEDED` for the same `worker_run_id`, the call is idempotent.
+  </Accordion>
+
+  <Accordion title="POST /internal/jobs/{job_id}/fail — Worker failure">
+    **Purpose**: Mark a job as failed and store an error payload.
+
+    **Body** (`WorkerCompleteFailure`):
+
+    ```json
+    {
+      "worker_run_id": "run_abc123",
+      "at": "2025-01-15T12:34:56Z",
+      "error": {
+        "code": "OCR_TIMEOUT",
+        "message": "OCR stage timed out after 300s",
+        "details": { "stage": "ocr", "elapsed_seconds": 300 }
+      }
+    }
+    ```
+
+    **Response** (`200`):
+
+    ```json
+    { "ok": true }
+    ```
+
+    **Errors**: `409 INVALID_TRANSITION`.
+
+    **Behavior**: Only succeeds when `worker_status == RUNNING` and `worker_run_id` matches.
+  </Accordion>
+</AccordionGroup>
+
+## Key models and constants
+
+These are defined in `chalicelib/models.py` (frontend) and `chalicelib/models.py` (service).
+
+### JobStatus enum
+
+```python
+class JobStatus(str, Enum):
+    AWAITING_UPLOAD = 'AWAITING_UPLOAD'
+    QUEUED = 'QUEUED'
+    RUNNING = 'RUNNING'
+    SUCCEEDED = 'SUCCEEDED'
+    FAILED = 'FAILED'
+    CANCELLED = 'CANCELLED'
+```
+
+### LineEditAction enum
+
+```python
+class LineEditAction(str, Enum):
+    CONFIRM = 'confirm'
+    NO_MATCH = 'no_match'
+    RESET = 'reset'
+    EDIT = 'edit'
+```
+
+### FeedbackType enum
+
+```python
+class FeedbackType(str, Enum):
+    PAGE = 'page'
+    HEADER = 'header'
+    LINES = 'lines'
+```
+
+### FileExt enum (allowed upload types)
+
+```python
+class FileExt(str, Enum):
+    XLSX = '.xlsx'
+    EML = '.eml'
+    MSG = '.msg'
+    TXT = '.txt'
+    PDF = '.pdf'
+    JPG = '.jpg'
+    JPEG = '.jpeg'
+    PNG = '.png'
+    DOCX = '.docx'
+```
+
+### Constants (`chalicelib/constants.py`)
+
+| Constant | Value | Purpose |
+| --- | --- | --- |
+| `JOB_META_LINE_ID` | `'JOB'` | Sort key for the job header row |
+| `DEFAULT_NO_MATCH_PART_NUMBER` | `'66666666'` | Placeholder part for no-match lines |
+| `ALLOWED_FILE_EXTENSIONS` | `{.pdf, .xlsx, ...}` | Valid upload types |
+| `MAX_FILE_SIZE_BYTES` | `10 * 1024 * 1024` | 10 MB upload limit |
+| `DEFAULT_JOB_LIST_LIMIT` | `50` | Default page size |
+| `MAX_JOB_LIST_LIMIT` | `200` | Max page size |
+| `LOCK_LEASE_SECONDS` | `65` | Lock TTL |
+| `TEXT_EXPORT_PARTS_PER_BATCH` | `200` | Lines per text-export file |
+| `VALID_COMPANY_IDS` | `{'001', '070'}` | Prelude company IDs |

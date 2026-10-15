@@ -1,1 +1,383 @@
+---
+title: "NaviGator PWA Code Architecture and Data Flow"
+sidebarTitle: "App Architecture"
+description: "Tour of the itinerary-builder codebase: entry points, state hooks, component hierarchy, service layer, config, PWA behavior, APM instrumentation, and test layout."
+---
 
+This page is a guided tour of the `itinerary-builder` codebase for engineers who need to find, change, or debug a feature. Every claim is grounded in the actual source files.
+
+## Entry Points
+
+### `src/main.tsx`
+
+The React bootstrap file performs initialization in this order:
+
+1. **APM initialization** (`initializeApm()`) — async, deliberately not awaited so startup never blocks
+2. **Version check** (`checkVersionAndClearIfNeeded()`) — compares `CURRENT_APP_VERSION` against localStorage; clears storage on mismatch so old schema data does not crash the app
+3. **MSAL initialization** (`msalInstance.initialize()`) — sets up Azure Entra ID auth
+4. **Redirect handling** (`handleRedirectPromise()`) — processes the OAuth redirect, sets the active account, or triggers `loginRedirect` if no account exists
+5. **React render** — mounts `<App />` inside `<MsalProvider>` and `<ApmErrorBoundary>`
+
+An event callback listens for `EventType.LOGIN_SUCCESS` to set the active account from the payload.
+
+### `src/App.tsx`
+
+The top-level orchestrator (~131KB, so it is large by necessity). It:
+
+- Initializes all custom hooks (`useStops`, `useSchedule`, `useGeoData`, `useAppState`, etc.)
+- Composes the responsive layout: `AppHeader`, `StopsSidebar` (desktop left), `MapView` (center), `ScheduleView` / `ItineraryPanel` (desktop right / mobile tabs)
+- Handles high-level event handlers: adding stops from geo queries, address search, assignment, export, save/load itinerary
+- Manages mobile tab state (`MobileNavigation`)
+- Lazy-loads heavy components (`MapView`, `AppModals`, `WeatherPanel`, `OpportunityLinksModal`) to reduce initial bundle size
+
+## State Management: Custom Hooks
+
+The app uses React hooks for all state. No Redux, Zustand, or external store.
+
+### `src/hooks/useStops.ts`
+
+The primary stop state hook. Returns:
+
+```typescript
+{
+  stops: Stop[];
+  expandedIdx: number | null;
+  isLoaded: boolean;
+  addStop, removeStop, updateStop, toggleExpanded, reorderStops,
+  loadStops, clearStops,
+  // Conflict handling for scheduled-stop time overlaps
+  conflictContext, resolveConflict, cancelConflict,
+}
+```
+
+- Stops are loaded from `localStorage` on mount via `loadItineraryFromStorage()`
+- Every mutation auto-saves back to `localStorage`
+- Detects fixed-time conflicts using `timeConflictValidation.ts` and surfaces a modal before applying the edit
+
+### `src/hooks/useSchedule.ts`
+
+Auto-calculates the schedule whenever stops or config change. Key behaviors:
+
+- Builds a **route signature** from stop coordinates and order; only fetches a new Mapbox Matrix when the signature changes
+- Caches the routing matrix to avoid redundant API calls when only dwell times change
+- Calls `ScheduleCalculator.calculateWithWarnings()` to produce `ScheduleItem[]` with day boundaries, fixed-time handling, and timezone-aware formatting
+
+### `src/hooks/useGeoData.ts`
+
+Fetches geo customers, plants, projects, landfills, cap projects, and opportunities within the current isochrone or search polygon. Returns:
+
+```typescript
+{
+  customerResults, plantResults, projectResults, landfillResults,
+  capProjectResults, opportunityResults,
+  isFetching, triggerQuery,
+  // Filter options with counts (for UI dropdowns)
+  customerOptions, plantOptions, projectOptions, /* ... */
+}
+```
+
+### `src/hooks/useAppState.ts`
+
+Centralized app state and stop creation handlers. Key exports:
+
+```typescript
+{
+  createBaseStop,           // async factory with timezone + reverse geocode
+  handleAddCustomerStop,    // enriches with recent activities, opportunity counts
+  handleAddPlantStop,
+  handleAddProjectStop,
+  handleAddLandfillStop,
+  handleAddCapProjectStop,
+  handleAddOpportunityPointStop,  // adds a quote/customer from an opportunity
+  handleAddTaskStop,        // pulls a workflow activity into the builder
+  handleAssignActivities,   // assigns stops to team or individual employee
+  activeCustomerId, setActiveCustomerId,
+  routeCorridorPolygon, setRouteCorridorPolygon,
+}
+```
+
+`setOriginIfFirstStop` automatically sets the itinerary origin to the user's current location when the first stop is added.
+
+### Other Key Hooks
+
+| Hook | Purpose |
+| --- | --- |
+| `usePersistedConfig` | Loads/saves `ScheduleConfig` to localStorage with migration helpers |
+| `useFilteredGeoData` | Filters geo results to exclude already-added stops; derives unique filter options |
+| `useIsochrone` | Generates a drive-time polygon from the user's location via Mapbox Isochrone API |
+| `useRouteCorridorSync` | Keeps the route corridor polygon in sync with the current route geometry |
+| `useActivityScheduleSync` | Writes scheduled-time edits back to the backend activity immediately |
+| `useUserIdentity` | Resolves the current user's SAM name and directory info from the API |
+| `useUserTasks` | Fetches workflow activities assigned to the current user |
+| `useAutoOptimize` | Triggers route optimization when stops change (with debounce) |
+| `useTheme` | Light/dark mode toggle with localStorage persistence |
+| `usePwaEvents` | Listens for PWA install prompts and updates |
+| `useIscoEasterEgg` | Hidden feature trigger (not documented here for spoiler reasons) |
+
+## Component Hierarchy
+
+### Layout Components (`src/components/layout/`)
+
+| Component | Role |
+| --- | --- |
+| `AppHeader.tsx` | Top bar: branding, address search, action buttons (Assign, Save, Export, Settings), mobile hamburger menu |
+| `MobileNavigation.tsx` | Bottom tab bar: Map, Itinerary, Activities |
+| `MobileConfigDrawer.tsx` | Slide-out settings panel on mobile |
+| `MobileSearchDrawer.tsx` | Slide-out search and filter panel on mobile |
+
+### Main Panels
+
+| Component | Role |
+| --- | --- |
+| `MapView.tsx` | Main map orchestrator (~90KB). Delegates to `map/` submodules for initialization, layers, markers, routing, and overlays. Handles Mapbox GL draw, dropped pins, and all geo marker types. |
+| `StopsSidebar.tsx` | Desktop left panel: draggable stop list, conflict warnings, optimize button, clear-all |
+| `ScheduleView.tsx` | Desktop right "Generated Itinerary": day-grouped schedule, summary stats, per-stop `UnifiedStopCard` in `executeOnly` mode |
+| `ItineraryPanel.tsx` | Mobile unified panel: combines stops + schedule into one scrollable list with `UnifiedStopCard` (not `executeOnly`) |
+| `CustomerModalSlideUp.tsx` | Bottom sheet (mobile) / side panel (desktop) showing geo search results as cards with CRM data, recent activities, and opportunity drill-down |
+| `AssignedSeriesTab.tsx` | "My Activities" tab: expandable series list, pick-up/merge/assign actions |
+
+### Shared Cards and Modals
+
+| Component | Role |
+| --- | --- |
+| `UnifiedStopCard.tsx` | The single stop card used everywhere. Supports both planning and execution phases via `executeOnly` prop. Contains contacts, visit details, financial tiles, and the close-out flow. |
+| `StopContactsPanel.tsx` | Contact picker inside the stop card: search HubSpot, create new contact, show existing |
+| `CloseStopModal.tsx` | Modal for completing or deferring a stop; requires a note |
+| `AssignmentModal.tsx` | Dialog for assigning the itinerary to a team or individual employee |
+| `SaveItineraryModal.tsx` | Name and save the current itinerary to the backend |
+| `LoadItineraryModal.tsx` | Browse and load previously saved itineraries |
+| `ConfigurationPanel.tsx` | Settings: working hours, filters, map style, route type, display toggles, advanced options |
+| `OpportunityLinksModal.tsx` | Drill-down into a customer's open opportunities by sales stage |
+| `WeatherPanel.tsx` | Current conditions and alerts for the itinerary region |
+| `AddressSearch.tsx` | Mapbox geocoding autocomplete with debounce |
+| `CreateContactModal.tsx` | HubSpot contact creation form |
+| `OutlookExportModal.tsx` | ICS calendar export with date/time configuration |
+
+### Map Submodules (`src/components/map/`)
+
+Decomposed from the original monolithic `MapView.tsx`:
+
+| File | Responsibility |
+| --- | --- |
+| `MapCore.ts` | Map initialization, lifecycle, imperative handle (`MapViewHandle`) |
+| `MapLayers.ts` | Route line, isochrone, corridor, heatmap layer add/remove |
+| `MapMarkers.ts` | Stop marker creation, numbering, employee markers, user location marker |
+| `MapOverlays.ts` | Isochrone, corridor, heatmap, sales region overlay rendering |
+| `MapRouting.ts` | Route fetching, optimization, fallback directions, fixed-stop handling |
+| `routeOrchestrator.ts` | Caches route geometry, adds stop markers, draws the full route |
+| `clusterLayers.ts` | GeoJSON clustering for 6 entity types at lower zoom levels |
+| `spiderfier.ts` | Spiral layout for overlapping pins at max zoom |
+| `useMapEffects.ts` | Hooks that manage geo marker lifecycle (cluster vs DOM marker paths) |
+| `mvtLayers.ts` | Mapbox Vector Tile layer management for high-density data |
+| `droppedPinPopup.ts` | Popup HTML and event wiring for manually dropped pins |
+| `visitReasonPopup.ts` | Reason-for-visit picker inside stop popups |
+| `mapHelpers.ts` | Constants, colors, popup content generators, coordinate builders |
+
+## Service Layer
+
+Every service is a plain TypeScript module with static functions or classes. No dependency injection framework.
+
+### Core Services
+
+| Service | File | What It Does |
+| --- | --- | --- |
+| `RoutingService` | `src/services/routingService.ts` | Fetches Mapbox Matrix API travel-time/distances; falls back to mock data if no token or fewer than 2 stops. Caches results per session by coordinate signature. |
+| `ScheduleCalculator` | `src/services/scheduleCalculator.ts` | Generates `ScheduleItem[]` from stops + config + matrix. Handles day boundaries, fixed-time appointments, timezone formatting, and warnings. |
+| `TimezoneService` | `src/services/timezoneService.ts` | Looks up IANA timezone from lat/lng via internal API; falls back to browser detection |
+| `GeoQueryService` | `src/services/geoQueryService.ts` | Consolidates polygon queries for all 6 entity types with deduplication and filter count extraction |
+| `ItineraryStorageService` | `src/services/itineraryStorageService.ts` | localStorage serialization/deserialization for stops and config with schema migration |
+| `ItinerarySaveService` | `src/services/itinerarySaveService.ts` | Persists itineraries to the backend API with user auth |
+
+### Route and Optimization Services
+
+| Service | File | What It Does |
+| --- | --- | --- |
+| `RouteOptimizationService` | `src/services/routeOptimizationService.ts` | Mapbox Optimization API wrapper, segment optimization, fallback to Directions API |
+| `SegmentOptimizationService` | `src/services/segmentOptimizationService.ts` | Optimizes stops between fixed-time appointments using time windows and greedy selection |
+| `ClusterRoutingService` | `src/services/clusterRoutingService.ts` | Geographic clustering of stops for multi-cluster route optimization |
+| `ClusteringEngine` | `src/services/clusteringEngine.ts` | K-means-like clustering with nearest-neighbor and round-trip sorting |
+| `GreedySelectionEngine` | `src/services/greedySelectionEngine.ts` | Fibonacci-inspired golden-ratio scoring to maximize stops within a time window |
+| `MapboxApiService` | `src/services/mapboxApiService.ts` | All raw Mapbox API calls (Directions, Matrix, Optimization) with caching and APM spans |
+| `RouteCorridorService` | `src/services/routeCorridorService.ts` | Builds buffered corridor polygons along a route for "search along route" |
+
+### Data and CRM Services
+
+| Service | File | What It Does |
+| --- | --- | --- |
+| `GeoCustomerService` | `src/services/geoCustomerService.ts` | Types and parsers for all geo entity responses (customers, plants, projects, landfills, cap projects, opportunities) |
+| `EntitySearchService` | `src/services/entitySearchService.ts` | Typeahead search across all entity types |
+| `HubSpotService` | `src/services/hubspotService.ts` | Search HubSpot companies and contacts; normalize Elasticsearch hits |
+| `CustomerActivitiesService` | `src/services/customerActivitiesService.ts` | Fetches recent customer activities (quotes, orders, contacts) for stop card enrichment |
+| `SalesEmployeeService` | `src/services/salesEmployeeService.ts` | Search sales employees by name for assignment |
+| `UserIdentityService` | `src/services/userIdentityService.ts` | Resolve current user's SAM name and directory record |
+| `UserTasksService` | `src/services/userTasksService.ts` | Fetch workflow activities assigned to the current user |
+| `EmployeeLocationService` | `src/services/employeeLocationService.ts` | Resolve user home base location for origin default |
+| `AssetTrackingService` | `src/services/assetTrackingService.ts` | Fetch latest rental asset locations for map overlay |
+
+### Workflow and Assignment Services
+
+| Service | File | What It Does |
+| --- | --- | --- |
+| `ActivitySeriesService` | `src/services/activitySeriesService.ts` | Create series + activities in Pipeline; posts `contacts` and `source_id` in the same transaction |
+| `AssignedSeriesService` | `src/services/assignedSeriesService.ts` | Read assigned series, pick up whole series or single stop, merge series |
+| `ActivityContactsService` | `src/services/activityContactsService.ts` | Add/remove contacts on an activity; hydrate contact IDs to names |
+| `ActivityAssociationService` | `src/services/activityAssociationService.ts` | Derive the source record (customer/plant/project) a stop was created from |
+| `ActivityNotesService` | `src/services/activityNotesService.ts` | Post close-out notes to the backend |
+| `ActivityStatus` | `src/services/activityStatus.ts` | Status code constants (Not Started = 1, In Progress = 2, etc.) |
+| `SeriesEditService` | `src/services/seriesEditService.ts` | Edit activity names and schedules after creation |
+
+### Utility Services
+
+| Service | File | What It Does |
+| --- | --- | --- |
+| `ExportService` | `src/services/exportService.ts` | ICS, Google Maps URL, PDF generation with static Mapbox map image |
+| `WeatherService` | `src/services/weatherService.ts` | Current conditions and alerts for a lat/lng |
+| `LocationRequestService` | `src/services/locationRequestService.ts` | Submit requests for new branch locations or address corrections |
+| `VersionService` | `src/services/versionService.ts` | Build version string from `package.json` + git SHA; detect stale storage |
+| `UserSettingsService` | `src/services/userSettingsService.ts` | Persist user preferences to backend |
+| `EntityMetadataService` | `src/services/entityMetadataService.ts` | Personal tags, favorites, and notes on geo entities |
+| `MarketTypeFilters` | `src/services/marketTypeFilters.ts` | Resolve market groupings and opportunity market counts |
+| `PicklistService` | `src/services/picklistService.ts` | ERP customer ID resolution |
+| `RoadProximityService` | `src/services/roadProximityService.ts` | Check if a dropped pin is near a drivable road |
+| `POIProximityService` | `src/services/poiProximityService.ts` | Find nearby points of interest for a stop |
+
+## Config (`src/config/`)
+
+| File | Purpose |
+| --- | --- |
+| `api.ts` | `API_BASE_URL` resolution, global fetch wrapper with Bearer token injection, Cloudflare Access header injection, `getApiUrl()` helper |
+| `msalConfig.ts` | Azure MSAL client ID, tenant authority, redirect URI, token scopes |
+| `apm.ts` | Elastic APM RUM initialization, configuration from env vars, dynamic import of the agent (code-split) |
+| `apmActions.ts` | Standardized APM transaction/span tracking for every domain: stop, geo, route, schedule, export, config, map, auth, itinerary, api, assignment |
+| `apmReact.tsx` | React hooks: `useApmTransaction`, `useApmPageView`, `ApmErrorBoundary` |
+| `defaults.ts` | Default `ScheduleConfig` values, `getNextBusinessDay()`, `getInitialConfig()` |
+| `mapboxConfig.ts` | Single source of truth for `MAPBOX_TOKEN` |
+| `index.ts` | Barrel exports |
+
+## PWA Behavior
+
+Configured in `vite.config.ts` via `vite-plugin-pwa`:
+
+- **Manifest**: `name: "ISCO NaviGator"`, `short_name: "NaviGator"`, standalone display, portrait-primary orientation
+- **Icons**: `192.png`, `512.png` (also maskable)
+- **Assets**: `navigator3.png`, `naviGator-intro-once.gif`, `naviGator-blinking-loop.gif`, `isco_logo.png`
+- **Workbox**: `navigateFallback: 'index.html'` for SPA routing; API paths excluded from fallback
+- **Runtime caching**: Mapbox API calls cached with NetworkFirst, 5-minute TTL, max 50 entries
+
+The service worker is generated at build time; no custom service worker source file is maintained.
+
+## APM Instrumentation
+
+Elastic APM RUM is initialized in `main.tsx` before React mounts. Key design decisions from `src/config/apm.ts`:
+
+- **Opt-in only**: `VITE_APM_ACTIVE` must be exactly `"true"`; disabled by default
+- **No credentials in the bundle**: The browser RUM agent does not authenticate; access is controlled server-side via `rum.enabled` and CORS `allow_origins`
+- **Dynamic import**: The agent is loaded via `import('@elastic/apm-rum')` so it is code-split into its own chunk and never fetched when APM is off
+- **Fail closed**: If `VITE_APM_ACTIVE=true` but `VITE_APM_SERVER_URL` is missing, initialization is refused rather than defaulting to an unintended endpoint
+- **Distributed tracing**: `API_BASE_URL` and `location.origin` are registered as `distributedTracingOrigins`
+
+APM actions are tracked via `apmActions.ts` with typed domains:
+
+```typescript
+// Example: tracking a stop add
+trackStopAction('add_customer', { stopName: 'Acme Corp', stopSource: 'customer' });
+
+// Example: tracking a route optimization
+trackRouteAction('optimize', { stopCount: 5 });
+
+// Example: tracking an API call
+const tx = trackApiAction('mapbox_matrix', { endpoint: 'directions-matrix/v1/mapbox/driving', method: 'GET' });
+tx.end({ api_status_code: 200 });
+```
+
+## Logging
+
+`src/utils/logger.ts` provides an environment-aware logger:
+
+- `logger.debug()` and `logger.info()` only log in development (`import.meta.env.DEV`)
+- `logger.warn()` and `logger.error()` always log, even in production
+
+This replaces raw `console.log` calls throughout the codebase.
+
+## Test Layout
+
+### Unit Tests (Vitest)
+
+| Location | Coverage |
+| --- | --- |
+| `src/hooks/__tests__/useStops.test.ts` | 25 tests for stop CRUD, persistence, conflict handling |
+| `src/services/__tests__/scheduleCalculator.test.ts` | 18 tests for schedule generation |
+| `src/services/__tests__/itineraryStorageService.test.ts` | 30 tests for serialization, migration, localStorage |
+| `src/services/__tests__/clusterRoutingService.test.ts` | 25 tests for geographic clustering |
+| `src/services/__tests__/geoCustomerService.test.ts` | 19 tests for location parsing and ID generation |
+| `src/utils/__tests__/validation.test.ts` | 8 tests |
+| `src/utils/__tests__/formatting.test.ts` | 16 tests |
+| `src/utils/__tests__/timeUtils.test.ts` | 13 tests |
+| `src/utils/__tests__/timeConflictValidation.test.ts` | 28 tests for fixed-time overlap detection |
+| `src/utils/__tests__/scheduleOptimizer.test.ts` | 16 tests for stop reordering |
+
+**Total**: 179 tests across 9 files.
+
+### Test Setup (`src/test/setup.ts`)
+
+Provides mocks for:
+
+- `mapbox-gl` (Map, Marker, Popup classes)
+- `localStorage` (full Storage interface implementation)
+- `ResizeObserver`
+- `fetch` (global mock)
+- `getAccessToken` (returns `'test-token'` to break circular dependency chain)
+
+Environment variable `TZ=America/New_York` is pinned in `vitest.config.ts` so time assertions are stable across machines.
+
+### E2E Tests (`e2e/`)
+
+Playwright scripts that drive the real app against real APIs:
+
+| Script | Purpose |
+| --- | --- |
+| `session.mjs` | Interactive auth capture; saves tokens to `.auth/session.json` |
+| `recon.mjs` | Mount check, control inventory, load-time request analysis |
+| `check-ui.mjs` | Desktop and mobile layout validation, request volume measurement |
+| `guard.mjs` | Write guard: blocks non-GET API calls against production databases |
+| `check-opportunity-branch.mjs` | Opportunity-specific UI validation |
+| `check-route.mjs` | Route rendering validation |
+
+## Data Flow Summary
+
+```text
+User Action (click pin, add stop, reorder, assign)
+        |
+        v
+App.tsx event handler
+        |
+        v
+useAppState handler (createBaseStop + addStop)
+        |
+        v
+useStops (persist to localStorage)
+        |
+        v
+useSchedule (detect change -> fetch matrix -> calculate)
+        |
+        v
+ScheduleView / ItineraryPanel re-render
+        |
+        v
+MapView (routeOrchestrator -> draw route + markers)
+```
+
+For execution-phase edits:
+
+```text
+User edits stop (contacts, schedule, close-out)
+        |
+        v
+UnifiedStopCard -> activity service (addActivityContacts, editActivitySchedule, finishClose)
+        |
+        v
+Navigator Services API -> Pipeline workflow tables
+        |
+        v
+useStops update (local state + localStorage)
+```
