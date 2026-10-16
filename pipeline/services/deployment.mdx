@@ -62,7 +62,7 @@ PM2 watches the `dist` folder for changes and reloads the process automatically 
 
 ## PR smoke tests
 
-The `PR Smoke Test` workflow (`.github/workflows/pr-smoke-test.yml`) runs on every pull request into `main` that has at least one approval. It is a required safety gate before merge.
+The `PR Smoke Test` workflow (`.github/workflows/pr-smoke-test.yml`) checks approval on PR events and submitted reviews. Its smoke job runs only for an open PR into `main` with at least one current approval. A skipped job is not a passing smoke test. The workflow alone does not establish branch-protection requirements.
 
 <Steps>
   <Step title="Check for approval">
@@ -79,7 +79,15 @@ The `PR Smoke Test` workflow (`.github/workflows/pr-smoke-test.yml`) runs on eve
   </Step>
 </Steps>
 
-If the smoke test passes, the PR can be merged and the deploy workflow will run.
+A passing smoke test proves only the documented GET cases that it exercised. Follow the repository's review and merge requirements separately; a merge triggers deployment.
+
+### Diagnose a local smoke-test failure
+
+The [ADO smoke-test guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Service-Specific%2Fservices_hot_reload%2FRunning%20services%20smoketest%20locally%20and%20troubleshooting%20failures) explains how OpenAPI examples drive the test. After changing route annotations, regenerate `openapi.json` with `npm run generate:openapi`. In an approved non-production environment, start the service with `npm run dev`, then request `GET /api/v1/health/smoketest` on its configured port.
+
+The inspected `src/api/health.ts` returns `403` when `NODE_ENV` is `production`. Otherwise, it reads `openapi.json`, skips routes in `tests/smoketest_exclude.json` and routes tagged **Dev Examples**, and builds GET requests from parameter examples or defaults. A failed case returns `500` with the failed endpoint, URL, parameters, and counts. Compare those parameters with the handler and reproduce the case in local Swagger before changing the service. Regenerate the spec after correcting annotations.
+
+This check contacts configured dependencies; it is not an offline unit test. Do not run it against live services just to validate documentation.
 
 ## Syncing main to azure_auth
 

@@ -32,6 +32,12 @@ Pipeline deploys automatically from GitHub Actions on a self-hosted runner. Each
   </Accordion>
 </AccordionGroup>
 
+## Feature-deployment guidance
+
+The [ADO feature-deployment guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Project-Specific%2FAB9192%3A%20Feature%20Deployments), updated October 14, 2026, describes a separate PR-preview flow: non-draft PRs into `test` receive `https://<PR-number>.pipeline.isco-pipe.com`, and closing or drafting a PR removes its preview. It describes Git worktrees on the development server, Apache `VirtualDocumentRoot`, wildcard DNS, and a wildcard certificate.
+
+That guide names `.github/workflows/feature_deploy.yml`, which was absent from the inspected `main` checkout and the `test` branch lookup on October 16, 2026. Do not assume this preview flow is available from the branch-per-environment workflows above. Confirm the workflow on the branch you use and its successful deployment before sharing a preview URL. The wiki's eventual move from `test` to `main` is a plan, not a confirmed trigger.
+
 ## Required repository secrets
 
 Set these under **Settings > Secrets and variables > Actions** in `iscopipe/pipeline`:

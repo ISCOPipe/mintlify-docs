@@ -15,6 +15,12 @@ These repositories supply Pip's document ingestion and retrieval layers. They do
 5. The worker splits text into chunks and writes the document's records in a database transaction. Its minimum-size pass measures payload characters, excluding the file-path header. It merges chunks below 300 characters forward and appends a final chunk below 150 characters to the previous chunk. A document that consists of one short, nonempty chunk stays intact because there is no neighbor to merge with.
 6. Retrieval services search the active records. Removal events retire a document rather than treating it as current content.
 
+### Compare the wiki design with the active path
+
+The [ADO SharePoint scanning guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Project-Specific%2FPIP-161%3A%20Pip%2FKnowledge%20Management%2FSharepoint%20Scanning) describes designated libraries, duplicate detection, S3 staging, parsing, and retirement of superseded content. Use it for design context, not exact worker guarantees: its illustrative chunk size and promise that every error reaches a dead-letter queue do not match all inspected code paths below.
+
+The [wiki retirement guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Project-Specific%2FPIP-161%3A%20Pip%2FKnowledge%20Management%2FRetiring%20Outdated%20or%20Incorrect%20Information) defines retirement as preserving information for review while marking it outdated or incorrect. It distinguishes chunks, documents, sources, resources, and libraries. Do not assume that setting a parent record's retirement flag excludes every child from retrieval. The inspected hybrid store explicitly filters `chunks.retired` and `sme_answers.retired`; verify the active service's filters and affected chunks before treating a retirement operation as complete.
+
 ## Understand replacement and failure behavior
 
 A document write has a transaction and rollback, but retirement of old content occurs separately before parsing the replacement. Do not describe the whole replacement as atomic: a failed replacement can leave the old content retired.

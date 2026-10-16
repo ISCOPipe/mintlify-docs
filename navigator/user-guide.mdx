@@ -129,6 +129,16 @@ Use settings to choose opportunity stages: New Opportunity, In Design, Project B
 
 If results appear incomplete, narrow the area and review enabled layers, stages, and recent-date filters. The API caps result sets; `/geo-activities` accepts at most 1000 activities per request. See [API search constraints](/navigator/services-api).
 
+## Preferences across devices
+
+The [September 2026 ADO NaviGator update](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Project-Specific%2FPIP-1373%3A%20Itinerary%20Builder%2FNaviGator%20-%20September%202026%20Updates) announces shared preferences, the external production address, and market filtering for both customers and opportunities. It identifies `https://navigator.isco-pipe.com` as production and `https://pathfinder.isco-pipe.com` as development. Its unreleased-user-rollout and work-in-progress dashboard notes describe that release date, not current access or rollout status.
+
+In the inspected app, `userSettingsService.ts` synchronizes configuration, theme, and tour state through `/api/v1/settings`. Failed reads preserve local settings, and failed writes remain pending for retry. A visible local preference change is not proof that another device has received it.
+
+The release note also mentions work-in-progress routes, but `useStops.ts` still auto-saves stops to browser storage. Use **Save Itinerary** and load the saved itinerary when moving a route between devices; do not assume unsaved stops synchronize with preferences.
+
+For the earlier activity changes, see the [August 18, 2026 wiki update](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Project-Specific%2FPIP-1373%3A%20Itinerary%20Builder%2FNaviGator%20-%20August%2018th%2C%202026%20Updates). It documents required close-out notes and deferral when no contact is selected, matching the execution flow above. Its future opportunity-stage filters are now covered by [map-result controls](#control-map-results), so do not read that older roadmap as the current feature limit.
+
 ## Onboarding tour
 
 New users can launch the guided tour from **Settings > Advanced > Replay Tutorial**. The tour (`src/tour/onboardingTour.ts`) walks through:

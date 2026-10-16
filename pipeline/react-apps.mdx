@@ -146,6 +146,18 @@ The host PHP page in `task/wf_procurement_request.php` provides both the button 
 <script type="module" src="/dist/vendor_quote_review.js"></script>
 ```
 
+## Reuse filters on PHP-hosted tables
+
+For a DataTables screen rather than a React screen, reuse `js/datatable_filter.js`. The [ADO FilterKit guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Service-Specific%2FPipeline%2FFilterKit%20%E2%80%94%20DataTables%20Filters) documents multi-select, date-range, and numeric-range filters for DOM and AJAX tables.
+
+1. Load jQuery, DataTables, and FilterKit before initializing the controls. Select2 is optional.
+2. Create your controls and initialize the DataTable.
+3. Call `FilterKit.create(table, specs, options)`. Map each spec to its column with `type: 'select'`, `type: 'daterange'`, or `type: 'numrange'`. Use `source` when a range needs a raw row field instead of displayed text.
+4. Enable DataTables `stateSave: true` if you want FilterKit to save and restore control values with the table state.
+5. Use `reset()` to clear filters and `destroy()` when removing the table.
+
+The inspected helper strips HTML for select values and supports `populateFrom: 'initial'` or `'visible'`. Check actual numeric input formats against `parseNumberLoose` before relying on locale formatting: the wiki lists `1.234,56`, but the implementation treats a comma as a thousands separator when both comma and dot occur. That example is not a guarantee of correct European-number parsing.
+
 ## Shared components and services
 
 Reusable React code lives in `react-src/components/` and `react-src/services/`. Each screen has its own component folder, but patterns are consistent across apps.

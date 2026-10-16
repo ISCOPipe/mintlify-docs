@@ -8,6 +8,12 @@ description: "Read rental metrics, create process-related NCRs, and record struc
 
 Sign in to Pipeline and open the page through your authorized navigation. A missing menu item or an access-denied message can mean your role does not allow that page. Do not work around access checks by calling a handler directly.
 
+## Keep activity work visible
+
+The [ADO Activities guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Service-Specific%2FPipeline%2FActivities) defines an activity as work assigned to an individual or team and associated with at least one record. It asks you to keep activity-related internal work inside the activity so reporting retains the process history. A series groups related activities; it is not a separate product.
+
+When tracing a workflow, start with `wf_activity`, `wf_association`, `wf_function`, `wf_activity_series`, and `wf_activity_notes` in the `IT` database. For development, use the named constants in `pipeline/task/enum/` and `services_hot_reload/src/services/activities/` instead of copying numeric activity codes. The [wiki enum examples](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Service-Specific%2FPipeline%2FActivities%2FEnums) describe the April 2026 state; check the current branch for available constants.
+
 ## Read the rental dashboard
 
 1. Open the **Rental Dashboard** (`rental/rental_dashboard.php`).

@@ -1,29 +1,32 @@
 ---
-title: "NaviGator Deployment: Blue-Green Frontend and Services"
+title: "Deploy ISCO NaviGator across frontend and services environments"
 sidebarTitle: "Deployment"
-description: "Deploy the NaviGator PWA and backend services using blue-green container switching, GitHub Actions, and PM2. Learn the CI flow, secrets, and rollback behavior."
+description: "Distinguish ISCO NaviGator's Amplify production frontend, Docker development frontend, and PM2 backend, with deployment and rollback limits."
 ---
 
-The NaviGator platform deploys in two parts: the React PWA (`itinerary-builder`) and the backend services (`navigator_services`). Both use GitHub Actions workflows that trigger on merged pull requests, but they use different deployment strategies. The frontend uses a blue-green Docker setup with zero-downtime switching, while the services layer deploys with PM2 on the same host.
+ISCO NaviGator has separate frontend and backend deployments. The [October 15, 2026 ADO infrastructure handoff](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2FHandoffs%2FWilliam%20Lemay%20-%20Infra) identifies the `main` frontend as an AWS Amplify site at `https://navigator.isco-pipe.com`, the `development` frontend as a blue-green Docker deployment on Pathfinder, and `navigator_services/main` as a PM2 application. This hosting inventory is wiki guidance, not a live deployment check. The Docker workflow below does not establish the production Amplify release process.
 
-## Deployment Overview
+## Deployment overview
 
 | Component | Repo | Trigger | Strategy | Host Path |
 | --- | --- | --- | --- | --- |
-| PWA (frontend) | `itinerary-builder` | PR merged to `development` | Blue-green Docker containers | `/opt/navigator` |
+| Development PWA | `itinerary-builder` | PR merged to `development` | Blue-green Docker via root-owned script | `/opt/navigator` |
+| Production PWA | `itinerary-builder` | Confirm in Amplify; wiki maps `main` to this site | AWS Amplify, per handoff | Not a Pathfinder docroot |
 | Services (backend) | `navigator_services` | PR merged to `main` | PM2 reload | `/opt/navigator_tapis` |
 
-Both workflows run on a self-hosted GitHub Actions runner and connect to the production server over SSH.
+The development Docker and backend PM2 workflows use a self-hosted GitHub Actions runner and SSH to Pathfinder. Do not infer Amplify's build or rollback settings from either workflow.
 
-## Frontend Blue-Green Deployment
+## Development frontend deployment
 
-The PWA deploys from the `itinerary-builder` repository using a blue-green pattern. Two identical frontend containers (`frontend-blue` and `frontend-green`) exist at all times, but only one serves traffic at a time through an nginx proxy.
+The [ADO Docker deployment handoff](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2FHandoffs%2FWilliam%20Lemay%20-%20Docker%20deploys) documents the root-owned scripts and Compose files in [ISCOPipe/docker_scripts](https://github.com/ISCOPipe/docker_scripts). The deployment account must not receive general Docker access to fix a permission failure.
 
-### How the Switch Works
+The [`development` workflow at `8fd45ac`](https://github.com/ISCOPipe/itinerary-builder/blob/8fd45acc9c3a34357a3c119fec88712f3435e022/.github/workflows/deploy.yaml) updates `/opt/navigator`, then invokes `sudo -n /opt/docker_scripts/deploy_navigator.sh`. The inspected `main` workflow still contains the older inline Docker commands. Check the actual deployment branch rather than copying commands from `main`.
 
-The proxy container reads an `ACTIVE_HOST` environment variable to decide which upstream container receives traffic. The deploy workflow (`deploy.yaml`) inspects the currently active slot, builds and starts the inactive one, verifies it is healthy, then reconfigures the proxy and tears down the old slot.
+The script alternates `frontend-blue` and `frontend-green` behind an nginx proxy. It starts the inactive slot before switching and removes the old slot afterwards; both slots do not remain running indefinitely.
 
-The switching logic from `.github/workflows/deploy.yaml`:
+### How the switch works
+
+The proxy reads `ACTIVE_HOST` to select its upstream. The root-owned script performs the following sequence, also described in the [deployment repository's Navigator section](https://github.com/ISCOPipe/docker_scripts#navigator):
 
 1. Read `ACTIVE_HOST` from the running proxy container's environment.
 2. If `ACTIVE_HOST` is `frontend-blue:80`, target `frontend-green`; otherwise target `frontend-blue`.
@@ -34,22 +37,22 @@ The switching logic from `.github/workflows/deploy.yaml`:
 
 If the new container fails to reach `running` status, the workflow exits before switching the proxy, leaving the current slot active.
 
-### Docker Compose Services
+### Docker Compose services
 
-The `docker-compose.yaml` defines three services:
+The deployment-owned `/opt/docker_scripts/navigator/docker-compose.yaml` defines three services. The app repository also contains an older Compose file; it is not the configuration the privileged script uses.
 
 - `proxy`: An nginx:alpine container that exposes port `443` and forwards traffic to the active frontend host. It mounts the proxy nginx config, a TLS certificate, and a private key.
 - `frontend-blue` and `frontend-green`: Two identical build targets that compile the Vite React app and serve it with nginx on port `80`.
 
 Both frontend services accept `VITE_APP_VERSION` and `VITE_GIT_SHA` as build args. The deploy script sets these from `package.json` version plus the short git SHA so every build is traceable.
 
-### Proxy Configuration
+### Proxy configuration
 
-The proxy nginx config (`proxy-nginx.conf`) defines a single upstream named `frontend` that resolves to `${ACTIVE_HOST}` at runtime. It listens on `443` with SSL for `pathfinder.isco-pipe.com` and proxies requests to the active container.
+The deployment-owned proxy config is `/opt/docker_scripts/navigator/proxy-nginx.conf`. It routes Pathfinder traffic to the active frontend slot. Maintain privileged scripts, Compose files, and proxy configuration through the deployment repository, not by editing the app checkout or server files. The Docker handoff states that `docker_scripts` has no CI/CD: an authorized administrator must pull reviewed changes onto the host, then run the app's deploy script. Pulling alone does not redeploy.
 
 The frontend container config (`app-nginx.conf`) is a standard static-file server on port `80` with `try_files` fallback to `index.html` for client-side routing.
 
-### Build-Time Versioning
+### Build-time versioning
 
 The `Dockerfile` is a multi-stage build:
 
@@ -58,18 +61,18 @@ The `Dockerfile` is a multi-stage build:
 
 Build args `VITE_APP_VERSION` and `VITE_GIT_SHA` are passed through both stages and stored as container labels (`org.opencontainers.image.version` and `org.opencontainers.image.revision`).
 
-## Services Deployment
+## Services deployment
 
 The backend services in `navigator_services` deploy with a simpler PM2-based flow defined in `.github/workflows/deploy.yml`.
 
-### Deploy Steps
+### Deploy steps
 
 1. SSH into the server and reset the working directory (`/opt/navigator_tapis`) to the latest `main` commit.
 2. Run `npm ci` to install dependencies.
 3. Run `npm run build` to compile TypeScript.
 4. Run `pm2 reload ecosystem.config.js` to restart the application cluster.
 
-### PM2 Configuration
+### PM2 configuration
 
 The `ecosystem.config.js` file defines a single app named `navigator_services`:
 
@@ -79,13 +82,13 @@ The `ecosystem.config.js` file defines a single app named `navigator_services`:
 - `exec_mode`: `cluster`
 - `env.NODE_ENV`: `production`
 
-Using `pm2 reload` performs a zero-downtime restart by spawning a new process before stopping the old one.
+PM2 cluster reload starts a replacement process before stopping the old one. Verify application health after the reload; this setting alone does not prove uninterrupted service.
 
-## CI Workflows and Secrets
+## CI workflows and secrets
 
 Both repos use GitHub Actions workflows that run on self-hosted runners. The workflows share the same SSH setup pattern but target different branches and host paths.
 
-### Required Secrets
+### Required secrets
 
 The workflows reference the following repository secrets by name. These must be configured in each repo's GitHub settings:
 
@@ -94,24 +97,25 @@ The workflows reference the following repository secrets by name. These must be 
 - `HOST_IP`: IP address or hostname of the deployment server.
 - `HOST_PORT`: SSH port on the deployment server.
 
-### Frontend Workflow (`deploy.yaml`)
+### Development frontend workflow (`deploy.yaml`)
 
-Triggered when a pull request to `development` is closed and merged. The job is named `Blue-Green Deploy`. It sets up SSH, pulls the latest code, and runs the blue-green deploy script remotely.
+Triggered when a pull request to `development` is closed and merged. The job is named **Blue-Green Deploy**. It sets up SSH, updates the app checkout, and calls the root-owned deploy script remotely.
 
-### Services Workflow (`deploy.yml`)
+### Services workflow (`deploy.yml`)
 
-Triggered when a pull request to `main` is closed and merged. The job is named `Git pull and Run Script`. It sets up SSH, pulls the latest code, installs dependencies, builds, and reloads PM2.
+Triggered when a pull request to `main` is closed and merged. The job is named **Git pull and Run Script**. It sets up SSH, pulls the latest code, installs dependencies, builds, and reloads PM2.
 
-### Test Workflow (`test.yaml`)
+### Test workflow (`test.yaml`)
 
 The `itinerary-builder` repo also runs unit tests on every pull request to `development` or `main` using `vitest`. The workflow installs Node 22, runs `npm ci`, and executes `npm run test:run`. Playwright end-to-end tests under `e2e/` are excluded from CI because they require a running app and an authenticated session.
 
-## Rollback Behavior
+## Rollback limits
 
-- **Frontend**: If the new container fails to start, the proxy is never switched, so traffic continues to the previously active slot. To roll back manually, an operator can set `ACTIVE_HOST` back to the previous slot and restart the proxy container.
-- **Services**: `pm2 reload` keeps the old process alive until the new one is ready. If the new build fails to start, PM2 retains the previous process. You can also run `pm2 reload ecosystem.config.js` again after fixing the code, or use `pm2 revert` to restore the last stable snapshot.
+- **Development frontend:** a startup failure before the switch leaves the active slot unchanged. The check is container status `running`, not an end-to-end health test. After a successful switch, the old slot is removed; changing `ACTIVE_HOST` back can target a missing container. Follow the [deployment repository's rollback procedure](https://github.com/ISCOPipe/docker_scripts#rolling-back-an-app): restore a known-good app revision and redeploy through the approved script. Do not run a bare proxy Compose command that resets the slot selection.
+- **Production frontend:** the cited handoff identifies Amplify hosting but does not document a verified rollback procedure. Do not apply the Docker procedure to this site.
+- **Services:** `pm2 reload` is a process reload, not a versioned application rollback. Restore a known-good source/build through the reviewed deployment process and verify health. Do not assume a reload failure restores all application files.
 
-## Related Pages
+## Related pages
 
 - [App Architecture](/navigator/app-architecture)
 - [App Setup](/navigator/app-setup)

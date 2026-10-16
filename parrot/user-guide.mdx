@@ -179,6 +179,12 @@ The PreludeHeader component (`lib/render/prelude_header.jsx`) loads picklist dat
 
 Required fields for export are: `company_id`, `customer_id`, `written_by`, `ship_to_address_one`, `ship_warehouse`, and `sales_warehouse`. The UI blocks export until these are filled.
 
+### Bonair warehouse selection
+
+The [August 20, 2026 ADO Parrot update](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Project-Specific%2FPIP-920%3A%20Quote%20Builder%2FParrot%20-%20Aug%2020%2C%202026%20Updates) documents the Bonair exception: sales warehouse **061** uses shipping warehouse **060**. The inspected `prelude_header.jsx` includes 061 in sales-warehouse lookups and locks the shipping field when 061 is selected. Check the resulting header before exporting; do not treat a locked shipping field as a failed lookup.
+
+The same release note labels email-body image extraction and customer/vendor part-number matching as experimental. It labels email instructions and Canadian terminology as partially complete. Those dated statements do not guarantee extraction or matching accuracy; keep the line-by-line review above even when a job succeeds.
+
 ### Export options
 
 | Export type | Behavior |

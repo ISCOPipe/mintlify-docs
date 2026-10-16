@@ -6,6 +6,16 @@ description: "Clone the three QMD repositories, install Visual Studio workloads 
 
 QMD is built from three Visual Studio solutions. This guide covers cloning them from GitHub and running the web portal, the API, and the Windows field app on a development machine.
 
+## Provision a managed field device
+
+A Visual Studio development build does not replace managed-device provisioning. The [ADO handheld QMD setup checklist](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Documentation%2FHelpdesk%20Support%2Fqmd%2Fhandheld%20qmd%20setup) describes imaging, the post-image step, matching device names across inventory and MDM, applying **QMD-install** and **EnrollMDM**, installing the managed app package, and confirming that it opens. It also calls for transducer registration and an app-version database check.
+
+Use that checklist with IT and the Quality team; confirm the current image, package, and enrollment procedure before changing a device. The [QMD onboarding/offboarding wiki](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Documentation%2FHelpdesk%20Support%2Fqmd%2Fqmd%20onboarding%20offboarding) identifies the Quality-maintained onboarding site as the source for device lifecycle instructions. Both pages live in the Pipeline project's wiki; that location does not make QMD part of the Pipeline intranet.
+
+<Warning>
+  Do not use the wiki's uninstall/reinstall update step to troubleshoot pending uploads. First preserve local joint records and follow [upload recovery](/qmd/field-app#recover-a-stalled-upload).
+</Warning>
+
 ## Requirements
 
 - Windows 10 or 11
