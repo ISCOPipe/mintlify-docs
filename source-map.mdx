@@ -34,9 +34,9 @@ Start with the guide for your task. Follow the commit link when you need to comp
 | [opportunity_mcp](https://github.com/ISCOPipe/opportunity_mcp) | `main` | [`56d7bee`](https://github.com/ISCOPipe/opportunity_mcp/commit/56d7beeba45ab75710c5511a34383f2ea90cdf4a) | [Open guide](/pipeline/supporting/mcp-tools) |
 | [qovc_mcp](https://github.com/ISCOPipe/qovc_mcp) | `main` | [`6cbfece`](https://github.com/ISCOPipe/qovc_mcp/commit/6cbfece2668279b943176942aaaf6f6007bb2eb0) | [Open guide](/pipeline/supporting/mcp-tools) |
 
-## Pip
+## PIP
 
-Pip owns these ingestion, retrieval, answering, knowledge-management, and model components. The news-report row is an adjacent service with a separate scheduler/emailer workflow, not part of the conversational runtime. See [Pip architecture](/pip/architecture).
+PIP owns these ingestion, retrieval, answering, knowledge-management, and model components. See [PIP architecture](/pip/architecture). PIP-NFR and Pipeline are separate systems.
 
 | Repository | Branch | Inspected revision | Guide |
 | --- | --- | --- | --- |
@@ -48,7 +48,14 @@ Pip owns these ingestion, retrieval, answering, knowledge-management, and model 
 | [pipeline-agent-experiments-endpoint](https://github.com/ISCOPipe/pipeline-agent-experiments-endpoint) | `main` | [`aeb2054`](https://github.com/ISCOPipe/pipeline-agent-experiments-endpoint/commit/aeb205490894669082cb73332f662b235abf5d64) | [Open guide](/pip/api) |
 | [pipeline-agent-experiments-llm](https://github.com/ISCOPipe/pipeline-agent-experiments-llm) | `main` | [`f2e978c`](https://github.com/ISCOPipe/pipeline-agent-experiments-llm/commit/f2e978ca68e4ea877c59a330295c1d5f049d4978) | [Open guide](/pip/architecture) |
 | [pipeline-agent-nli-model-deploy](https://github.com/ISCOPipe/pipeline-agent-nli-model-deploy) | `main` | [`4b69b5c`](https://github.com/ISCOPipe/pipeline-agent-nli-model-deploy/commit/4b69b5c97a572489154dfd8a68d6e6c4750e71d6) | [Open guide](/pip/architecture) |
-| [pip-news-feed-report-service](https://github.com/ISCOPipe/pip-news-feed-report-service) | `main` | [`39cae57`](https://github.com/ISCOPipe/pip-news-feed-report-service/commit/39cae570d14593e2fa2af70d1f0d53f4795e8d4b) | [Open guide](/pip/news-reports) |
+
+## PIP-NFR (news-feed reports)
+
+PIP-NFR generates Culvert lead reports. Its scheduler and Pipeline emailer integrations do not make it part of PIP or Pipeline.
+
+| Repository | Branch | Inspected revision | Guide |
+| --- | --- | --- | --- |
+| [pip-news-feed-report-service](https://github.com/ISCOPipe/pip-news-feed-report-service) | `main` | [`39cae57`](https://github.com/ISCOPipe/pip-news-feed-report-service/commit/39cae570d14593e2fa2af70d1f0d53f4795e8d4b) | [Open guide](/pip-nfr/overview) |
 
 ## Development and operations
 

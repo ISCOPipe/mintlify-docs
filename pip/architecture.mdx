@@ -30,7 +30,7 @@ Read the [ingestion guide](/pip/document-retrieval) for retirement, replacement,
 
 - **Pipeline:** hosts an interface and proxies requests; it remains the intranet product.
 - **MCP tools:** expose shared business-data lookups. A tool's availability does not establish that every Pip route uses it.
-- **News reporting:** `pip-news-feed-report-service` runs a separate Culvert lead-report workflow. Source verifies a scheduler trigger and an emailer callback, not a shared conversational runtime.
+- **[PIP-NFR (news-feed reports)](/pip-nfr/overview):** `pip-news-feed-report-service` runs a separate Culvert lead-report workflow. Source verifies a scheduler trigger and an emailer callback, not a shared PIP conversational runtime.
 - **Scheduled jobs:** operate multiple systems. Keep their schedules and retries separate from Pip's document scanner.
 
 See the [source map](/source-map) for exact snapshots. The map describes code boundaries, not a guarantee that every component is deployed together.

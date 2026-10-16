@@ -24,7 +24,7 @@ Read `scheduled_jobs/CLAUDE.md` and the current package scripts before developme
 
 ## News-report integration
 
-The scheduler can trigger the separate Culvert lead-report service, and Pipeline's emailer can deliver its callback. This does not make the report generator part of the intranet runtime or every scheduled job part of Pip. Use the [news-report guide](/pip/news-reports) for run status, setup, and delivery limits.
+The scheduler can trigger PIP-NFR (news-feed reports), and Pipeline's emailer can deliver its callback. PIP-NFR remains separate from both Pipeline and PIP. Use the [PIP-NFR guide](/pip-nfr/overview) for run status, setup, and delivery limits.
 
 ## Direct S3 uploads
 
@@ -54,6 +54,18 @@ Use the service's offline pytest checks for local validation. Uploading to a rea
 These are targets, not guaranteed delivery intervals. Connectivity, GPS acquisition, power, and acknowledgements affect delivery. Power detection polls every two seconds and uses separate on/off/lost-power debounce windows of 10/30/6 seconds. The acknowledgement timeout is 60 seconds.
 
 The daily schedule is fixed at 08:00 UTC. Do not describe it as a fixed 03:00 local time: daylight-saving time changes the local equivalent.
+
+### Compare the Rental Tracker wiki with the firmware
+
+The [ADO Rental Tracker guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=669) describes a separate machine-diagnostics path through a CAN bus, the machine's internal communication network. Its [diagnostic-event guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=683) describes full active-fault snapshots, a 60-second listening and state-change window, and immediate publication for severe faults. These are wiki statements, not verified behavior of the inspected `tracker-edge/main` revision. That revision wires location, power, movement, and scheduled reporting in `src/main.cpp`; it does not contain the described CAN fault-event handlers. Do not interpret a missing diagnostic event as proof that a machine has no faults.
+
+Before investigating diagnostics or changing fleet settings:
+
+1. Confirm the device's Particle product and installed firmware revision. Do not assume it matches `main`.
+2. Compare that firmware with the diagnostic-event guide before relying on its event names or timing.
+3. For a configuration change, follow the [wiki's fleet-configuration procedure](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=671): select the intended product in Particle Console, then open **Configuration > Typed configuration**. Confirm the affected fleet before saving. The wiki states that product-wide settings exclude devices marked as development devices.
+
+Cloud configuration and firmware logic are not interchangeable. The inspected reporting state machine sets its own mode-dependent distance and timing rules, so a saved cloud setting alone does not establish the device's effective reporting behavior.
 
 ## Source reference
 
