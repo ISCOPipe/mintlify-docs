@@ -1,15 +1,16 @@
 ---
 title: "Understand the application boundaries"
 sidebarTitle: "Architecture"
-description: "Distinguish Pipeline, Pip, Parrot, QMD, ISCO NaviGator, and their cross-system integrations."
+description: "Distinguish Pipeline, PIP, PIP-NFR, Parrot, QMD, ISCO NaviGator, and their cross-system integrations."
 ---
 
-## The five products
+## The six systems
 
 | Product | User interface | Backend | Main records |
 | --- | --- | --- | --- |
 | Pipeline | PHP pages and embedded React apps in `pipeline` | PHP handlers and `services_hot_reload` | Sales, operations, quality, and employee data |
-| Pip | Assistant interface integrated with Pipeline | Separate answering, ingestion, retrieval, knowledge-management, and model components | Source chunks, curated knowledge, conversations, and feedback |
+| PIP | Assistant interface integrated with Pipeline | Separate answering, ingestion, retrieval, knowledge-management, and model components | Source chunks, curated knowledge, conversations, and feedback |
+| PIP-NFR (news-feed reports) | Generated Culvert lead reports | `pip-news-feed-report-service`, triggered by `scheduled_jobs` | Ranked leads, stored reports, and run status |
 | Parrot | Quote builder embedded in Pipeline | Two orchestration contracts and an AWS worker | Uploads, jobs, extracted lines, product candidates, and exports |
 | QMD | ASP.NET web portal and Windows UWP field app | Dedicated ASP.NET Web API | Fusion jobs, joints, equipment, and calibration records |
 | ISCO NaviGator | React progressive web app in `itinerary-builder` | `navigator_services` | Saved itineraries, assigned activities, geographic entities, and user settings |
@@ -29,7 +30,7 @@ The API mounts each file in `services_hot_reload/src/api/` under `/api/v1/<filen
 
 Pip is a separate system, even when you use it through Pipeline. Pipeline's PHP proxy forwards conversational requests to the Pip assistant API. Source ingestion and curated knowledge maintenance have their own paths; they are not generic intranet support jobs. Read [Pip architecture](/pip/architecture) to distinguish answering, ingestion, knowledge management, and model inference.
 
-The adjacent news-reporting service has a separate runtime and scheduler/emailer integration. It is not evidence that Pip chat owns all reporting or scheduled jobs.
+[PIP-NFR (news-feed reports)](/pip-nfr/overview) is a separate system with its own runtime and scheduler/emailer integration. Those connections do not make it part of PIP or Pipeline.
 
 ## Parrot processing path
 

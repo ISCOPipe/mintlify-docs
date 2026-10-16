@@ -34,7 +34,7 @@ Do not run the README's deployment, layer-publication, alias, gateway, or scalin
 - **Knowledge management:** start from the nested Chalice application, not the commented experimental retrieval app. Inspect its dependencies and API-key guard before connecting a client.
 - **ETL and scanner:** each has `prod_requirements.txt` and its own Chalice application. Use approved fixtures and inspect the selected test before execution. Starting ingestion can copy files, queue messages, retire records, and write chunks.
 - **NLI:** install `requirements.txt` in its own environment. The source pins matching gRPC runtime/tools and constrains protobuf; choose a PyTorch wheel for the target hardware. Model loading can download weights and consume substantial memory. Do not expose the insecure gRPC listener publicly.
-- **News reports:** follow the [separate reporting setup](/pip/news-reports), not the assistant's Chalice workflow.
+- **PIP-NFR (news-feed reports):** follow its [separate reporting setup](/pip-nfr/overview), not the PIP assistant's Chalice workflow.
 
 ## Verify a change safely
 
