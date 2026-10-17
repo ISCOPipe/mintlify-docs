@@ -39,7 +39,7 @@ If the new container fails to reach `running` status, the workflow exits before 
 
 ### Docker Compose services
 
-The deployment-owned `/opt/docker_scripts/navigator/docker-compose.yaml` defines three services. The app repository also contains an older Compose file; it is not the configuration the privileged script uses.
+The deployment-owned `/opt/docker_scripts/navigator/docker-compose.yaml` defines three services. The app repository no longer contains its own Compose file, proxy config, or PM2 config.
 
 - `proxy`: An nginx:alpine container that exposes port `443` and forwards traffic to the active frontend host. It mounts the proxy nginx config, a TLS certificate, and a private key.
 - `frontend-blue` and `frontend-green`: Two identical build targets that compile the Vite React app and serve it with nginx on port `80`.

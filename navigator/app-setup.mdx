@@ -1,7 +1,7 @@
 ---
 title: "Set Up NaviGator for Local Development"
 sidebarTitle: "App Setup"
-description: "Clone the itinerary-builder repo, install dependencies, configure environment variables, and run the NaviGator PWA locally with Vite, Docker, or PM2."
+description: "Clone the itinerary-builder repo, install dependencies, configure environment variables, and run the NaviGator PWA locally with the Vite dev server or a single Docker container."
 ---
 
 This page covers how to get the NaviGator PWA (`itinerary-builder`) running on your local machine. You will need the Navigator Services API running as well; see [Services Setup](/navigator/services-setup) for that.
@@ -11,7 +11,7 @@ This page covers how to get the NaviGator PWA (`itinerary-builder`) running on y
 - **Node.js 22+** (the Dockerfile uses `node:22`; CI also runs on Node 22)
 - **npm** (comes with Node)
 - A **Mapbox access token** (obtain from Mapbox dashboard or a teammate)
-- (Optional) **Docker and Docker Compose** for containerized local runs
+- (Optional) **Docker** for containerized local runs
 - (Optional) **Playwright** for end-to-end testing
 
 ## Clone and Install
@@ -48,7 +48,7 @@ cp .env.example .env
 | `VITE_APM_ENVIRONMENT` | APM environment label | `development` |
 
 <Warning>
-  Never commit real values for `VITE_CF_CLIENT_ID`, `VITE_CF_SECRET_ID`, `VITE_APM_SECRET_TOKEN`, or `VITE_APM_API_KEY` to the repo. These are production secrets and must come from the team's secret store or a teammate. `VITE_*` variables are inlined verbatim into the public JS bundle by Vite, so any secret placed here is exposed to the browser.
+  Never commit real values for `VITE_CF_CLIENT_ID`, or `VITE_CF_SECRET_ID` to the repo. These are production secrets and must come from the team's secret store or a teammate. `VITE_*` variables are inlined verbatim into the public JS bundle by Vite, so any secret placed here is exposed to the browser.
 </Warning>
 
 ### Production Build Variables (`.env.production.example`)
@@ -58,7 +58,8 @@ The repo includes `.env.production.example` as a template for production builds.
 - `VITE_API_BASE_URL` (must be set for production to ensure correct API routing)
 - `VITE_CF_CLIENT_ID` / `VITE_CF_SECRET_ID` (Cloudflare Access service token for backend auth)
 - `VITE_APM_SERVER_URL`, `VITE_APM_SERVICE_NAME`, `VITE_APM_SERVICE_VERSION`, `VITE_APM_ENVIRONMENT`, `VITE_APM_ACTIVE`
-- `VITE_APM_SECRET_TOKEN` or `VITE_APM_API_KEY` (APM auth; note that the browser RUM agent does not actually send these, but the example documents them)
+
+Neither example file includes an APM token. The browser RUM agent does not authenticate, so do not add an APM secret token or API key to any `VITE_*` variable.
 
 ## NPM Scripts
 
@@ -94,7 +95,7 @@ The same proxy is applied to the preview server. If you are running Navigator Se
 
 ## Running with Docker
 
-The repo includes a multi-stage Dockerfile and a docker-compose setup for blue-green deployments.
+The repo includes a multi-stage Dockerfile that builds and serves the app in a single container. Use it to check a production build locally.
 
 ### Build and Run the Frontend Container
 
@@ -116,63 +117,7 @@ The Dockerfile (`Dockerfile`):
 3. Copies the `dist` folder into `nginx:alpine`
 4. Serves on port 80 with `app-nginx.conf` (SPA fallback to `index.html`)
 
-### Full Blue-Green Stack (docker-compose.yaml)
-
-```yaml
-services:
-  proxy:
-    image: nginx:alpine
-    volumes:
-      - ./proxy-nginx.conf:/etc/nginx/templates/default.conf.template
-      - ${cert_path}:/etc/nginx/server.crt
-      - ${key_path}:/etc/nginx/server.key
-    ports:
-      - "443:443"
-    environment:
-      - ACTIVE_HOST=${ACTIVE_HOST:-frontend-blue:80}
-    depends_on:
-      - frontend-blue
-      - frontend-green
-
-  frontend-blue:
-    build:
-      context: .
-      args:
-        VITE_APP_VERSION: ${VITE_APP_VERSION:-}
-        VITE_GIT_SHA: ${VITE_GIT_SHA:-}
-    container_name: frontend-blue
-
-  frontend-green:
-    build:
-      context: .
-      args:
-        VITE_APP_VERSION: ${VITE_APP_VERSION:-}
-        VITE_GIT_SHA: ${VITE_GIT_SHA:-}
-    container_name: frontend-green
-```
-
-The proxy nginx config (`proxy-nginx.conf`) listens on 443 with SSL and routes to whichever `ACTIVE_HOST` is set. This is the same mechanism used in production deployment.
-
-## Running with PM2
-
-For production-like local runs without Docker, use the included `ecosystem.config.cjs`:
-
-```js
-module.exports = {
-  name: 'navigator',
-  script: "npm",
-  args: 'run preview',
-  env: {
-    NODE_ENV: 'production'
-  }
-}
-```
-
-Start it with:
-
-```bash
-pm2 start ecosystem.config.cjs
-```
+The app repo no longer contains a Docker Compose file, a TLS proxy config, or a PM2 config. The blue-green proxy, Compose services, and TLS certificates for the development frontend live in the deployment repository. The server-side deploy script manages them. See [Deployment](/navigator/deployment) for that flow.
 
 ## Testing
 
