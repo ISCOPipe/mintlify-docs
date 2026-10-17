@@ -1,0 +1,38 @@
+---
+title: "Deploy PIP-NFR with the approved script"
+sidebarTitle: "Deployment"
+description: "Separate application releases from root-owned Docker configuration synchronization and verify deployment without starting a live report."
+---
+
+PIP-NFR has its own deployment workflow and container. Its scheduler and emailer integrations do not deploy it. The [inspected workflow](https://github.com/ISCOPipe/pip-news-feed-report-service/blob/ea3694d1c2a8aaf3b4ddcf8e11143d80b188d827/.github/workflows/deploy.yml) invokes the root-owned deployment script described in the [October 16 Docker handoff](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=693). This is source and handoff guidance, not a live deployment check.
+
+## Follow an application release
+
+1. Review and merge the application change into `main`. The workflow runs on a push to `main` or an authorized manual dispatch.
+2. Check the `test` job on the self-hosted Linux runner. It creates a temporary Python 3.12 environment, installs the development dependencies, and runs `pytest -q`. The separate `deploy` job depends on that test job.
+3. Confirm that the deployment step actually ran. Without the `SSH_KEY` secret, the workflow runs tests and skips deployment. A green test result alone does not prove a release occurred.
+4. With deployment credentials available, the workflow connects over SSH and updates `/opt/services/pip-news-feed-report-service` to `origin/main`.
+5. It invokes `sudo -n /opt/docker_scripts/deploy_pip-news-feed-report-service.sh`. The workflow no longer performs Docker build or Compose commands directly. The app repository no longer owns the Compose file.
+6. Review the script's deployment output. The workflow describes build, container recreation, a health wait, and an authentication check without triggering a report. Confirm the service's health and intended revision through the approved operator procedure.
+
+The workflow references `SSH_KEY`, `SSH_USER`, `HOST_IP`, and `HOST_PORT` repository secrets. Do not put their values in documentation or copy a live server configuration into an example.
+
+## Change deployment configuration
+
+The handoff places privileged scripts and Compose configuration in `ISCOPipe/docker_scripts`, checked out at `/opt/docker_scripts`. Treat this as deployment-owned configuration, not an app-local file.
+
+1. Submit a reviewed change to the appropriate script or Compose configuration in `docker_scripts`.
+2. After it reaches `main`, check the repository's sync workflow. The handoff says this workflow invokes `sudo /usr/local/sbin/sync_docker_scripts.sh`, a root-owned command that accepts no arguments and resets `/opt/docker_scripts` to `origin/main`.
+3. Confirm synchronization completed. Synchronization updates deployment files; it **does not redeploy** an application.
+4. Run the approved app-specific deployment script through the authorized deployment path to apply the change.
+
+`svc_git` may use sudo only for its permitted commands. A new app requires an administrator to add the app-specific sudoers rule. Do not edit server files directly or grant general Docker or sudo access to bypass a failure.
+
+## Investigate a failed release
+
+- If tests fail, fix the application change before deployment.
+- If SSH or sudo fails, check the configured account and app-specific permission with the operator. Do not broaden its privileges.
+- If the script or Compose file looks outdated, check the deployment-repository sync result separately from the application workflow.
+- If health or authentication verification fails, preserve the failing step and revision for the operator. Do not submit `POST /runs` as a deployment test: it can incur cost, write output, and send mail.
+
+The app workflow calls a script outside this repository. Its name and comments do not prove the current server contents or a successful rollout. Use the approved deployment-repository rollback procedure with a known-good app revision; do not invent an inline Docker recovery command.

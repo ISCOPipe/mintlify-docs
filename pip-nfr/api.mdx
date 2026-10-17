@@ -1,0 +1,52 @@
+---
+title: "Submit and follow a PIP-NFR report"
+sidebarTitle: "API and local setup"
+description: "Submit a dated report, follow stored run status, redraw an existing report, and configure local development."
+---
+
+PIP-NFR runs independently from PIP and Pipeline. Use the configured PIP-NFR origin, not a PIP conversation endpoint. Protected routes require `Authorization: Bearer <token>`. The server rejects calls when `NFR_API_TOKEN` is missing as well as when the supplied token is wrong.
+
+## Follow one report
+
+1. Choose the intended report date in `YYYY-MM-DD` format. The caller supplies the date; the API does not default to today's UTC date.
+2. Submit `POST /runs` with `date` and optional `dry_run` (default `false`). This can call paid news and model services.
+3. Read the `202` response's `status`. For `accepted` or `already_running`, keep the returned `run_id`. For `already_complete`, use the returned `s3_key`; do not expect a new run identifier.
+4. Poll `GET /runs/{run_id}` for `running`, `complete`, or `failed`. A `404` means that identifier has no stored status. Read the recorded error for a failed run before retrying.
+5. For a complete report, call `GET /runs/{day}/download` using the **report date**, not the run identifier. It returns `s3_key`, `url`, and `expires_in`. A missing report returns `404`.
+6. Review the report and its sources. Check notification logs separately if delivery matters.
+
+A `202` response does not mean the report has finished. Status and same-day markers live in storage and survive a container restart. The same-day guard reuses an active run or an existing completed report. Inflight markers become stale after three hours; investigate the previous run before starting replacement work. Do not treat this storage-marker guard as a guarantee of exactly-once execution across competing callers.
+
+## Redraw or resend a stored report
+
+Use `POST /runs/{day}/render` with optional `dry_run` to render a stored snapshot again. This path does not fetch feeds or call models, but it stores rendered output and can send the email callback. It is not a read-only preview. Save and poll the returned run identifier as above.
+
+A dry run still uses real feeds and models and stores output. Its flag tells the callback's emailer to narrow the recipient list; it does not make execution offline. After reviewing a dry run, an authorized caller can render the same day with `dry_run: false` to send it through the normal mailing path.
+
+A completed run means the report was stored, not that email reached a recipient. Notification attempts are capped at three and delivery is not exactly once. With no `NFR_S3_BUCKET`, the API stores the report locally and skips the mailing. If an S3 download URL expires, request a fresh URL rather than generating the report again. `NFR_PRESIGN_TTL` defaults to 86400 seconds.
+
+## Check health without creating work
+
+`GET /healthz` returns the service health response without caller authentication. Use it instead of submitting a report as a health check. It does not prove that a live feed, model call, output write, or email callback will succeed.
+
+## Prepare local development
+
+Use Python 3.10 or later for the project; the Docker image uses Python 3.12. From the repository root, create an isolated environment and install the package with its development extra using `python -m pip install -e '.[dev]'`. Run offline checks with `python -m pytest -q`.
+
+The image starts `python -m uvicorn api.main:app --host 0.0.0.0 --port 8000`. For a local-only development listener, use `python -m uvicorn api.main:app --host 127.0.0.1 --port 8000` after setting approved local configuration. Starting the API is not permission to submit a live run.
+
+| Setting | Purpose |
+| --- | --- |
+| `NFR_API_TOKEN` | Caller key; clients send `Authorization: Bearer <token>` |
+| `NFR_LOCAL_ROOT` | Local output root when S3 is not configured |
+| `NFR_S3_BUCKET`, `NFR_S3_PREFIX` | Optional S3 output destination |
+| `NFR_CALLBACK_URL`, `NFR_CALLBACK_MAILING` | Optional emailer destination and mailing |
+| `NFR_CALLBACK_TOKEN` | Optional bearer token on the outbound callback |
+| `NFR_PRESIGN_TTL` | Download-link lifetime |
+| `ANTHROPIC_API_KEY` | Provider credential required for live API runs |
+
+Keep callbacks unset for a local development run unless you intend to send a notification. A local output destination does not prevent paid provider calls. The README's cron example describes one machine, not a verified schedule for all deployments.
+
+## Source reference
+
+The [API implementation](https://github.com/ISCOPipe/pip-news-feed-report-service/blob/ea3694d1c2a8aaf3b4ddcf8e11143d80b188d827/api/main.py) defines the routes, storage markers, and callback handling. See [deployment](/pip-nfr/deployment) for the release path.

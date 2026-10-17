@@ -72,6 +72,8 @@ All of these endpoints use `GET /api/v1/rental_dashboard/<subpath>`:
 
 Source: `src/api/rental_dashboard.ts`, especially `getMachineReport`, `/open_shop_orders`, and `/growth_to_goal`.
 
+For machine search, current diagnostic snapshots, fault activations, live signal requests, and definition maintenance, use the standalone [rental diagnostics guide](/pipeline/services/rental-diagnostics). These routes use the `/rental_asset_tracking` prefix, not `/rental_dashboard`.
+
 ## Create structure tests and retests
 
 `POST /api/v1/structure_test` writes records and workflow activities. Use an approved development work order.

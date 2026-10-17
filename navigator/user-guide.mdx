@@ -123,6 +123,16 @@ A point of interest (POI) is a named place from address search, such as a busine
 
 If no nearby records are found, you can keep the POI. If the check fails, the app tells you and still lets you use the POI. Do not assume a failed search proved there are no matching records.
 
+## Open and dismiss map cards
+
+1. Search the area, then select a result pin. On desktop, rest the pointer briefly on the pin before clicking; the app ignores hurried mouse clicks to avoid opening a card while you pan. Touch, pen, and keyboard activation do not require this pause.
+2. If you see a numbered cluster, select it to zoom toward its individual pins. A cluster count is a count of loaded map results, not a total from the source system.
+3. Review the card before adding a stop. On mobile, the card appears over the page so it is not clipped by the map container. Scroll its content when needed.
+4. Use the card's close control, or press **Escape** with a keyboard. When a dialog is open above the map, close that dialog first.
+5. If the wrong record opens or pins overlap, use the result list and its globe control to focus the intended pin. Recheck the name and record type before choosing **Add as Stop**.
+
+These interactions come from `src/components/geoMarkers/shared.ts`, `src/components/map/clusterLayers.ts`, and `src/components/MapView.tsx`. The [app's detailed manual](https://github.com/ISCOPipe/itinerary-builder/blob/6ad7e8280e564260a8f459ae2864eb1859e40ec6/markdown/USER_MANUAL.md) covers additional search, schedule, and mobile controls. Its screenshots and example records are not a guarantee of what your account can see.
+
 ## Control map results
 
 Use settings to choose opportunity stages: New Opportunity, In Design, Project Bidding, Provided Quote, Contractor Awarded, and PO Pending. Customer filtering by opportunity stage is a separate option; showing an opportunity layer does not necessarily narrow customer pins.

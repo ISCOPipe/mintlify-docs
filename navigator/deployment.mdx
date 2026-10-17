@@ -20,7 +20,7 @@ The development Docker and backend PM2 workflows use a self-hosted GitHub Action
 
 The [ADO Docker deployment handoff](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2FHandoffs%2FWilliam%20Lemay%20-%20Docker%20deploys) documents the root-owned scripts and Compose files in [ISCOPipe/docker_scripts](https://github.com/ISCOPipe/docker_scripts). The deployment account must not receive general Docker access to fix a permission failure.
 
-The [`development` workflow at `8fd45ac`](https://github.com/ISCOPipe/itinerary-builder/blob/8fd45acc9c3a34357a3c119fec88712f3435e022/.github/workflows/deploy.yaml) updates `/opt/navigator`, then invokes `sudo -n /opt/docker_scripts/deploy_navigator.sh`. The inspected `main` workflow still contains the older inline Docker commands. Check the actual deployment branch rather than copying commands from `main`.
+The [workflow inspected on `main` at `6ad7e82`](https://github.com/ISCOPipe/itinerary-builder/blob/6ad7e8280e564260a8f459ae2864eb1859e40ec6/.github/workflows/deploy.yaml) now matches the script-based deployment path: it updates `/opt/navigator` to `origin/development`, then invokes `sudo -n /opt/docker_scripts/deploy_navigator.sh`. Its trigger remains a merged PR to `development`; finding this workflow on `main` does not make it an Amplify production workflow.
 
 The script alternates `frontend-blue` and `frontend-green` behind an nginx proxy. It starts the inactive slot before switching and removes the old slot afterwards; both slots do not remain running indefinitely.
 
@@ -48,7 +48,9 @@ Both frontend services accept `VITE_APP_VERSION` and `VITE_GIT_SHA` as build arg
 
 ### Proxy configuration
 
-The deployment-owned proxy config is `/opt/docker_scripts/navigator/proxy-nginx.conf`. It routes Pathfinder traffic to the active frontend slot. Maintain privileged scripts, Compose files, and proxy configuration through the deployment repository, not by editing the app checkout or server files. The Docker handoff states that `docker_scripts` has no CI/CD: an authorized administrator must pull reviewed changes onto the host, then run the app's deploy script. Pulling alone does not redeploy.
+The deployment-owned proxy config is `/opt/docker_scripts/navigator/proxy-nginx.conf`. It routes Pathfinder traffic to the active frontend slot. Maintain privileged scripts, Compose files, and proxy configuration through reviewed changes in the deployment repository, not by editing the app checkout or server files.
+
+The [October 16 Docker handoff](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=693) supersedes the earlier manual-pull guidance. After changes reach `docker_scripts/main`, its sync workflow calls the root-owned, no-argument `sudo /usr/local/sbin/sync_docker_scripts.sh` to reset `/opt/docker_scripts` to `origin/main`. Check that sync separately, then run the authorized app-specific deploy script to apply the files. **Sync does not redeploy.** A new app requires an administrator to add its app-specific sudoers rule; do not grant general Docker or sudo access.
 
 The frontend container config (`app-nginx.conf`) is a standard static-file server on port `80` with `try_files` fallback to `index.html` for client-side routing.
 

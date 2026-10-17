@@ -18,12 +18,12 @@ When tracing a workflow, start with `wf_activity`, `wf_association`, `wf_functio
 
 1. Open the **Rental Dashboard** (`rental/rental_dashboard.php`).
 2. Confirm the company and team context before comparing figures. The page uses your sales-team context and company selection.
-3. Open the filter control to choose a **Market Type**, then select **Search**. Use **Clear Filter** to remove it.
-4. In **Equipment Revenue**, switch between **Rental**, **Used**, and **New** rather than treating them as one category.
+3. Open the **Filter** control. Select the required customer/market types, or use **Check All**, then select **Apply Filters**. Use **Clear Filters** to remove the saved selection. The page remembers the selection in a browser cookie, so recheck it when reopening the dashboard.
+4. Review the **Equipment revenue** sections for rental, used, and new equipment separately. Do not treat them as one sales category.
 5. Review availability, utilization, and revenue together. A machine can be unavailable because it is down, not because it is on rent.
 6. If a card stays blank or shows an error, check its request before treating the result as zero.
 
-The page conditionally shows sections for different team contexts. The growth-to-goal section appears for the **Everything** and **Sales Support** contexts in the inspected page. API routes also supply open shop-order and growth-to-goal summaries; their existence does not mean every user sees every card.
+The page conditionally shows sections for different team contexts. **Everything** and **Sales Support** receive the full dashboard, including the **Growth-to-goal board** and **Open shop orders**. Other team contexts receive a smaller set of cards. The market-type selection also passes into linked reports; compare the same company, team, and filter scope before comparing a card with a report.
 
 For integration details and company filters, see [rental API reads](/pipeline/services/endpoints#rental-dashboard-reads).
 
@@ -47,7 +47,20 @@ Selecting the process-related option removes the form's condition-row requiremen
 4. Run closure validation and read its result. The page starts a closure-review workflow; do not assume clicking the button alone finished review.
 5. Use the NCR report's **Process Related** and **Process Related Disclaimer** filters to find the applicable records. These values are also included in the EOC export.
 
+The EOC export scopes customer-type matching by company as well as customer type. Its disposition filter also includes records whose disposition is null. A blank disposition in an export is missing data, not a completed disposition decision.
+
 Source: `ncr/ncr_form.php`, `ncr/ncr_detail.php`, `ncr/ncr_report.php`, and `ncr/eoc_export.php`.
+
+## Select an HS Code country
+
+An HS Code is a Harmonized System product-classification code. To add an entry:
+
+1. Open the **HS Code Form**, search for the product, and verify **Company ID**.
+2. Enter the **HS Code** and select **Ship From Country**. That origin selector offers the United States and Canada.
+3. Select **Ship To Country**. For a destination outside those two choices, the form now offers **International** (`INT`). The HS Code log's edit dialog also offers that destination choice.
+4. Review the origin and destination, then select **Submit**. Check the saved record in the product's HS Code log before submitting another entry.
+
+Source: `sales/orders/hs_code_form.php` and `sales/orders/ajax_hs_code_log.php`.
 
 ## Record a structure test and repair
 

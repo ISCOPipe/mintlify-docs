@@ -37,6 +37,7 @@
               "pipeline/services/overview",
               "pipeline/services/local-setup",
               "pipeline/services/endpoints",
+              "pipeline/services/rental-diagnostics",
               "pipeline/services/adding-a-service",
               "pipeline/services/deployment"
             ]
@@ -46,7 +47,10 @@
             "pages": [
               "pipeline/supporting/development-container",
               "pipeline/supporting/mcp-tools",
-              "pipeline/supporting/operations"
+              "pipeline/supporting/operations",
+              "pipeline/supporting/scheduled-jobs",
+              "pipeline/supporting/uploads",
+              "pipeline/supporting/trackers"
             ]
           }
         ]
@@ -64,7 +68,9 @@
       {
         "group": "PIP-NFR",
         "pages": [
-          "pip-nfr/overview"
+          "pip-nfr/overview",
+          "pip-nfr/api",
+          "pip-nfr/deployment"
         ]
       },
       {

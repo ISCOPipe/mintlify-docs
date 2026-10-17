@@ -1,72 +1,35 @@
 ---
-title: "Operate jobs, reports, uploads, and trackers"
+title: "Find an operational service guide"
 sidebarTitle: "Operational services"
-description: "Understand background schedules, asynchronous report status, direct S3 uploads, and tracker reporting limits."
+description: "Choose a focused guide for scheduled jobs, PIP-NFR integration, uploads, or trackers."
 ---
 
-These services run outside the main product request paths. Confirm the environment before starting a job or retrying a write. The [source map](/source-map) links the inspected revisions.
+These services have different runtimes and responsibilities. Confirm the environment before starting a job or retrying a write.
 
 ## Scheduled data updates
 
-`scheduled_jobs` runs Node.js jobs that synchronize operational data. It requires Node.js 22 or later. The registry schedules jobs in `America/New_York`; its default weekday time is 08:00. Individual jobs override the cron expression. Culvert runs at 05:00 and its checker at 08:30. The iTop job runs daily at 03:00 in that same registry timezone. Separately, iTop chooses a full run when `new Date().getDay()` reports Sunday in the process timezone. Those two timezone checks can differ.
-
-The overlap guard is an in-memory set in one process. It does not prevent duplicate work across multiple instances. Some jobs log a partial failure and continue. The Cority job advances its watermark only after all required work succeeds.
+Use [scheduled jobs](/pipeline/supporting/scheduled-jobs) to investigate a missed update, partial failure, or retry. A scheduler startup message does not prove that a job completed.
 
 ### Investigate a missed update
 
-1. Identify the job, its own schedule, and the process timezone.
-2. Confirm that the scheduler process was running at that time.
-3. Inspect the job result and partial-failure logs, not just the scheduler's startup message.
-4. Check the last successful watermark where the job uses one.
-5. Agree on the scope of a retry before starting it. A retry can write external systems.
-
-Read `scheduled_jobs/CLAUDE.md` and the current package scripts before development. Offline Jest checks and `test:live` are different paths. Migration scripts mutate external data: review them, apply `001` before `002`, and quote their filename glob. They do not maintain a migration-state table that makes repeats automatically safe.
+Follow the [missed-update procedure](/pipeline/supporting/scheduled-jobs#investigate-a-missed-update) before retrying a job that can write external systems.
 
 ## News-report integration
 
-The scheduler can trigger PIP-NFR (news-feed reports), and Pipeline's emailer can deliver its callback. PIP-NFR remains separate from both Pipeline and PIP. Use the [PIP-NFR guide](/pip-nfr/overview) for run status, setup, and delivery limits.
+The scheduler can trigger PIP-NFR, and Pipeline's emailer can deliver its callback. PIP-NFR remains separate from Pipeline and PIP. Use the [PIP-NFR guide](/pip-nfr/overview) for report generation and delivery limits.
 
 ## Direct S3 uploads
 
-`s3-upload-portal` separates authenticated metadata checks from the file transfer. The client uses `POST /presign`, then sends the file directly to S3 with the returned **POST form fields**. Do not convert that transfer into a presigned PUT.
-
-1. Read `GET /config` for the upload limits.
-2. Read `/warehouses` and `/users/me/primary_warehouse` when choosing a warehouse. A primary-warehouse fallback can be null.
-3. Validate the filename and required terms before asking for a presigned upload.
-4. Send the server's returned form fields and file in a multipart POST to the returned S3 URL.
-5. Check the S3 response and the application's resulting record before retrying.
-
-The filename limit is 255 UTF-8 bytes, not 255 characters. Required terms must be nonempty and cannot contain a slash. File size must be greater than the configured minimum and at most the maximum. A duplicate can return `409`. The server derives uploader identity; do not substitute a user name from client input.
-
-Use the service's offline pytest checks for local validation. Uploading to a real bucket changes external state.
+Use [direct S3 uploads](/pipeline/supporting/uploads) for metadata checks and the multipart POST transfer. Do not replace the returned POST form with a presigned PUT.
 
 ## Edge tracker behavior
 
-`tracker-edge` firmware balances movement reporting and battery life. Its low and critical battery thresholds are 25% and 15%, with two-percentage-point recovery hysteresis. Hysteresis means a small recovery above the entry threshold does not immediately change the mode.
-
-| Mode | Reporting target |
-| --- | --- |
-| External power | Every 15 minutes |
-| Normal battery | After 500 meters of movement, following more than 50 meters of detected motion |
-| Low battery | Every 30 minutes while moving |
-| Critical battery | Every 8 hours |
-
-These are targets, not guaranteed delivery intervals. Connectivity, GPS acquisition, power, and acknowledgements affect delivery. Power detection polls every two seconds and uses separate on/off/lost-power debounce windows of 10/30/6 seconds. The acknowledgement timeout is 60 seconds.
-
-The daily schedule is fixed at 08:00 UTC. Do not describe it as a fixed 03:00 local time: daylight-saving time changes the local equivalent.
+Use [edge tracker reporting](/pipeline/supporting/trackers) for battery modes, reporting limits, and fleet configuration. For the service-side machine and fault workflow, use [rental diagnostics](/pipeline/services/rental-diagnostics).
 
 ### Compare the Rental Tracker wiki with the firmware
 
-The [ADO Rental Tracker guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=669) describes a separate machine-diagnostics path through a CAN bus, the machine's internal communication network. Its [diagnostic-event guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=683) describes full active-fault snapshots, a 60-second listening and state-change window, and immediate publication for severe faults. These are wiki statements, not verified behavior of the inspected `tracker-edge/main` revision. That revision wires location, power, movement, and scheduled reporting in `src/main.cpp`; it does not contain the described CAN fault-event handlers. Do not interpret a missing diagnostic event as proof that a machine has no faults.
-
-Before investigating diagnostics or changing fleet settings:
-
-1. Confirm the device's Particle product and installed firmware revision. Do not assume it matches `main`.
-2. Compare that firmware with the diagnostic-event guide before relying on its event names or timing.
-3. For a configuration change, follow the [wiki's fleet-configuration procedure](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=671): select the intended product in Particle Console, then open **Configuration > Typed configuration**. Confirm the affected fleet before saving. The wiki states that product-wide settings exclude devices marked as development devices.
-
-Cloud configuration and firmware logic are not interchangeable. The inspected reporting state machine sets its own mode-dependent distance and timing rules, so a saved cloud setting alone does not establish the device's effective reporting behavior.
+The [tracker guide](/pipeline/supporting/trackers#compare-the-rental-tracker-wiki-with-the-firmware) distinguishes wiki descriptions from inspected firmware and explains the conflicting diagnostic timing.
 
 ## Source reference
 
-Start with the scheduler registry and job modules in `scheduled_jobs`, the presign/config handlers in `s3-upload-portal`, and the reporting and power-state logic in `tracker-edge`.
+The [source map](/source-map) links the inspected revisions of `scheduled_jobs`, `s3-upload-portal`, and `tracker-edge`.

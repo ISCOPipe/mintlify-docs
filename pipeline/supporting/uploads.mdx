@@ -1,0 +1,21 @@
+---
+title: "Upload files directly to S3"
+sidebarTitle: "Direct S3 uploads"
+description: "Follow metadata validation and multipart POST uploads."
+---
+
+`s3-upload-portal` separates authenticated metadata checks from the file transfer. The client uses `POST /presign`, then sends the file directly to S3 with the returned **POST form fields**. Do not convert that transfer into a presigned PUT.
+
+1. Read `GET /config` for the upload limits.
+2. Read `/warehouses` and `/users/me/primary_warehouse` when choosing a warehouse. A primary-warehouse fallback can be null.
+3. Validate the filename and required terms before asking for a presigned upload.
+4. Send the server's returned form fields and file in a multipart POST to the returned S3 URL.
+5. Check the S3 response and the application's resulting record before retrying.
+
+The filename limit is 255 UTF-8 bytes, not 255 characters. Required terms must be nonempty and cannot contain a slash. File size must be greater than the configured minimum and at most the maximum. A duplicate can return `409`. The server derives uploader identity; do not substitute a user name from client input.
+
+Use the service's offline pytest checks for local validation. Uploading to a real bucket changes external state.
+
+## Source reference
+
+See the [source map](/source-map) for the inspected repository revision and [operational services](/pipeline/supporting/operations) for related guides.

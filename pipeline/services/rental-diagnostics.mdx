@@ -1,0 +1,83 @@
+---
+title: "Inspect rental machines and diagnostics"
+sidebarTitle: "Rental diagnostics"
+description: "Find a tracked machine, interpret fault history, request a signal, and maintain diagnostic definitions without confusing stored reports with live machine state."
+---
+
+Pipeline Services exposes these routes under `/api/v1/rental_asset_tracking`. Use the configured service origin and the access controls described in [API endpoints](/pipeline/services/endpoints). The inspected router does not establish a global bearer-token requirement. A reachable route is not permission to edit machine records, request a device reading, or rewrite stored reports.
+
+## Find a machine
+
+1. Call `GET /machines` with optional `q` to search serial numbers and device names. Here, a device name means the registered `unit_number`; it is not the Particle device identifier.
+2. Narrow the result with `companyId`, `customerCode`, `engineActive=true|false`, or `activeAlerts=none|alerting|severe` when needed. Keep company and customer codes as strings.
+3. Follow pagination with `page` and `perPage`. Responses include `page`, `perPage`, `total`, and `totalPages`, plus matching `X-Total-*` and page headers. Defaults are page 1 and 50 rows; the maximum page size is 1000. Invalid sort choices return `400`. Signal and dictionary searches reject pages beyond their 10000-record result window.
+4. Open `GET /machines/{serial}` using the machine serial number. It returns the registered tracker, rental order/customer, location, engine telemetry, and latest diagnostic state. An unknown tracked serial returns `404`.
+5. Compare `lastReportTime`, location `reportedAt`, engine-state `lastRefreshTime`/`ageSeconds`, and diagnostic `reportedAt` before acting. These can describe different reports at different times.
+
+`GET /machines/summary` returns fleet totals. **Online** means `engineActive` is true in the latest stored engine state. It does not test present network connectivity. A missing engine state is unknown, not proof that the engine is off.
+
+## Interpret an alert
+
+A diagnostic report is a snapshot of active fault codes received from machine controllers. An SPN identifies a parameter; an FMI identifies its failure mode. The API represents a fault code as `spn-fmi` and retains the controller's `sourceAddress`.
+
+| Alert level | Meaning in the API |
+| --- | --- |
+| `none` | No report exists, or the latest report has no active faults |
+| `alerting` | The latest report contains active faults that do not meet the severe rule |
+| `severe` | Active faults exist and the report has `shutdown=true`, or an active fault's dictionary severity is `shutdown` |
+
+The `activeAlerts=alerting` filter includes severe machines. A dictionary severity such as `critical` does not by itself equal the API's `severe` level. Always check the report time, `incomplete`, lamps, code mapping, and available troubleshooting text. An unmapped code can have no description. Missing text or `alertLevel=none` is not proof that a machine is safe or fault-free.
+
+## Investigate a fault over time
+
+1. Read `GET /machines/{serial}/diagnostic/summary` for codes reported by that tracker. `timesSeen` counts separate activations, not every snapshot containing the code.
+2. Open `GET /machines/{serial}/diagnostic/detail/{code}` for individual activations. Use `spn-fmi` for one code or a bare SPN for all its failure modes.
+3. Read `startedAt`, `lastReportedAt`, and `endedAt` together. `endedAt=null` means the stored history still treats the activation as active.
+4. Check the source address and report completeness before concluding that a fault cleared.
+
+The service reconstructs history in report-time order. A later authoritative snapshot that omits a code closes its activation. An incomplete report does not clear faults for a missing controller, and a controller that reports omitted faults does not clear its missing codes. These timestamps bound what the service observed; they are not exact physical fault-start and repair times.
+
+## Request a signal reading
+
+A signal is a requested machine measurement, such as engine speed. This operation calls the device through Particle; it is not a stored-data health check.
+
+1. Confirm the intended machine and that its installed firmware supports the request. The device needs CAN traffic from the machine's internal network.
+2. Read `GET /machines/spn` to choose a requestable signal. You can search with `q` and filter `catalogVersion`.
+3. Use the returned dictionary **`id`**, not the signal's SAE `spn`, in `POST /machines/{serial}/spn/{id}`.
+4. If the API returns `200`, review the decoded reading, sampled time, age, units, and status.
+5. If it returns `202`, keep `requestId` and poll `GET /machines/{serial}/spn?requestId=...`. Do not issue another device request just because decoding is pending.
+
+The API normally waits about 20 seconds for decoding before returning pending status. `SPN_READING_WAIT_MS` and `SPN_READING_POLL_MS` configure that wait. An accepted device request is not a completed measurement.
+
+| Status | What to investigate |
+| --- | --- |
+| `400` | Invalid dictionary ID or rejected argument |
+| `404` | Unknown machine, or the requested signal has not been broadcast |
+| `409` | No CAN traffic; the machine may be off |
+| `422` | Signal absent from the device firmware catalog |
+| `500` | Particle configuration or stored-reading query failure |
+| `502` | Particle function call failure |
+| `503` | Offline device or unavailable CAN controller |
+
+## Correct a registration
+
+For an authorized correction, use `PATCH /machines/{serial}` with the loaded `deviceId` and at least one of `serialNumber`, `unitNumber`, or `model`. Omitted fields remain unchanged. Text must contain 1–24 printable ASCII characters; an empty or null `unitNumber` clears it.
+
+A serial change moves the registered unit/tracker association to the new serial's document. It does not update the separate `tracking_devices` index. A `409` means another tracker owns that serial or the record changed during editing. Reload and resolve the conflict rather than repeatedly overwriting it.
+
+## Maintain diagnostic definitions
+
+The dictionaries describe codes and signals. Editing a definition changes interpretation, not the physical machine or its firmware catalog. Use approved technical evidence for severity and customer-facing guidance.
+
+1. Search `GET /dictionary/faults` or `GET /dictionary/signals`. Use `needsReview` and the severity/applicability filters to narrow review work.
+2. For an unmapped fault, inspect `GET /dictionary/faults/unmapped`. It groups stored unmapped codes by SPN, FMI, and source address; ambiguous mappings are excluded. A populated `definitionId` means a definition now exists and stored reports need reprocessing, not another definition.
+3. Use `POST /dictionary/faults` to add a verified mapping. It derives vendor/model context from stored reports. A duplicate or missing report context returns `409`.
+4. Use `PATCH /dictionary/faults/{id}` or `/dictionary/signals/{id}` to edit permitted fields. Imported fault descriptions are not editable through this route; manually created faults allow descriptive edits. For restricted signals, supply a nonempty `machineTypes` list; other applicability values require that list to be empty.
+5. Decide explicitly whether to reprocess existing data. Without `recode: true`, the save does not rewrite historical decoded records. To reprocess later, use `POST /dictionary/faults/{id}/recode` or `/dictionary/signals/{id}/recode`.
+6. Save the returned job identifier and poll `GET /dictionary/jobs/{id}`. Check status, error, and `skipped` as well as `updated` counts before treating the work as complete.
+
+Reprocessing (called **recode** by the API) rewrites stored diagnostic interpretations or signal text. It can therefore change historical displays; signal values and layouts remain unchanged. Job status lives only in the service process, keeps the latest 200 jobs, and disappears on restart. A `404` does not prove that no records changed. Re-running reprocessing is supported, but inspect skipped records and current state before deciding on a retry.
+
+## Source reference
+
+See the [rental router](https://github.com/ISCOPipe/services_hot_reload/blob/6ee315f01c76d9b4a7d9c5192741ed07c31990d1/src/api/rental_asset_tracking.ts) and its `src/services/rental_asset_tracking/` modules for machine lookup, history reconstruction, dictionary validation, and reprocessing. The [tracker guide](/pipeline/supporting/trackers) separately explains firmware evidence and conflicting wiki timing. Service-side API support does not prove which firmware is deployed on a device.

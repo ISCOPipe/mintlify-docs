@@ -1,0 +1,38 @@
+---
+title: "Understand edge tracker reporting"
+sidebarTitle: "Edge trackers"
+description: "Separate inspected firmware behavior from machine-diagnostic guidance."
+---
+
+`tracker-edge` firmware balances movement reporting and battery life. Its low and critical battery thresholds are 25% and 15%, with two-percentage-point recovery hysteresis. Hysteresis means a small recovery above the entry threshold does not immediately change the mode.
+
+| Mode | Reporting target |
+| --- | --- |
+| External power | Every 15 minutes |
+| Normal battery | After 500 meters of movement, following more than 50 meters of detected motion |
+| Low battery | Every 30 minutes while moving |
+| Critical battery | Every 8 hours |
+
+These are targets, not guaranteed delivery intervals. Connectivity, GPS acquisition, power, and acknowledgements affect delivery. Power detection polls every two seconds and uses separate on/off/lost-power debounce windows of 10/30/6 seconds. The acknowledgement timeout is 60 seconds.
+
+The daily schedule is fixed at 08:00 UTC. Do not describe it as a fixed 03:00 local time: daylight-saving time changes the local equivalent.
+
+## Compare the Rental Tracker wiki with the firmware
+
+The [ADO Rental Tracker guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=669) describes a separate machine-diagnostics path through a CAN bus, the machine's internal communication network. Its [diagnostic-event guide](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=683) describes full active-fault snapshots, a 60-second listening and state-change window, and immediate publication for severe faults. These are wiki statements, not verified behavior of the inspected `tracker-edge/main` revision. That revision wires location, power, movement, and scheduled reporting in `src/main.cpp`; it does not contain the described CAN fault-event handlers. Do not interpret a missing diagnostic event as proof that a machine has no faults.
+
+The newer [October 16 Particle page](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=694) instead describes a configurable yellow-lamp delay with a **30-second default**, immediate red-lamp reporting, and a report after a code clears for 30 seconds. This conflicts with the older guide's 60-second window. Neither page establishes the timing on a deployed device. Check its firmware and effective configuration rather than choosing one interval as universal. The newer page also says manual `spn_reading` events follow `getSpn` calls while the engine is on; they are not a continuous telemetry stream.
+
+The [rental diagnostics API](/pipeline/services/rental-diagnostics) reads stored decoded reports and requests signals. That service implementation does not prove that the firmware described by the wiki is installed on a particular machine.
+
+Before investigating diagnostics or changing fleet settings:
+
+1. Confirm the device's Particle product and installed firmware revision. Do not assume it matches `main`.
+2. Compare that firmware with the diagnostic-event guide before relying on its event names or timing.
+3. For a configuration change, follow the [wiki's fleet-configuration procedure](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pageId=671): select the intended product in Particle Console, then open **Configuration > Typed configuration**. Confirm the affected fleet before saving. The wiki states that product-wide settings exclude devices marked as development devices.
+
+Cloud configuration and firmware logic are not interchangeable. The inspected reporting state machine sets its own mode-dependent distance and timing rules, so a saved cloud setting alone does not establish the device's effective reporting behavior.
+
+## Source reference
+
+See the [source map](/source-map) for the inspected repository revision and [operational services](/pipeline/supporting/operations) for related guides.
