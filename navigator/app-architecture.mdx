@@ -112,7 +112,7 @@ Centralized app state and stop creation handlers. Key exports:
 | `useAutoOptimize` | Triggers route optimization when stops change (with debounce) |
 | `useTheme` | Light/dark mode toggle with localStorage persistence |
 | `usePwaEvents` | Listens for PWA install prompts and updates |
-| `useIscoEasterEgg` | Hidden feature trigger (not documented here for spoiler reasons) |
+| `useIscoEasterEgg` | Hidden ISCO map-mode trigger (desktop browser only) |
 
 ## Component Hierarchy
 
@@ -152,6 +152,25 @@ Centralized app state and stop creation handlers. Key exports:
 | `AddressSearch.tsx` | Mapbox geocoding autocomplete with debounce |
 | `CreateContactModal.tsx` | HubSpot contact creation form |
 | `OutlookExportModal.tsx` | ICS calendar export with date/time configuration |
+
+### Navigator Games
+
+Optional hidden mini-games mounted at the end of `App.tsx` inside `EasterEggTimeProvider`. See [Navigator Games](/navigator/user-guide#navigator-games) for user-facing rules.
+
+| Component / module | Role |
+| --- | --- |
+| `EasterEggTimeGate.tsx` | `EasterEggTimeProvider` (receives `config.dailyStartTime` / `config.dailyEndTime`), `useEasterEggGate` (refuses to open when the budget is spent and claims the single active-game slot), and `useEasterEggSession` (charges play time while a game is open and locks restarts once exhausted) |
+| `src/utils/easterEggTimeBudget.ts` | Shared 15-minute daily budget (`EASTER_EGG_BUDGET_MS`), counted only inside working hours and stored in `localStorage` under `navigator.easterEggUsage` with an in-memory fallback |
+| `NavigatorGameHeader.tsx` | Shared dialog header with title, subtitle, optional actions, and **Restart** / **Close** buttons |
+| `ChampionshipGolfEasterEgg.tsx` | Listens for `iscochampionship` and opens `FrontNineGolfGame` |
+| `FrontNineGolfGame.tsx` | Front 9 golf: course play, wind, scorecard, leaderboard. Gopher and eagle assists (`golfGopher.ts`, `golfEagle.ts`) mark a hole as assisted, and assisted or partial rounds are not submitted |
+| `golfCourse.ts` | Club list (`GOLF_CLUBS`), hole definitions (`FRONT_NINE`), and terrain helpers |
+| `HdpeStackEasterEgg.tsx` / `hdpeStackGame.ts` | HDPE Stack falling-piece game, triggered by `hdpehdpe` |
+| `LazyBowlingEasterEgg.tsx` | Listens for `bowlingbowling` / `candlepinbowling` and dynamically imports `BowlingEasterEgg.tsx`, so three.js and Matter.js stay out of the main bundle |
+| `BowlingEasterEgg.tsx` / `bowlingGame.ts` | Ten-pin and candlepin bowling (`variant` prop) with three.js rendering and Matter.js physics |
+| `src/services/navigatorGamifyService.ts` | Fetches and submits leaderboards via `GET`/`POST` `/api/v1/navigator_gamify/{front-nine,hdpe-stack,bowling,candlepin}` |
+
+Only one game can be open or loading at a time. Each trigger claims a module-level slot before opening, so a second trigger phrase typed during play is ignored.
 
 ### Map Submodules (`src/components/map/`)
 
