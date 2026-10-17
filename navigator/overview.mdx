@@ -28,7 +28,7 @@ NaviGator helps sales reps and managers:
 | `itinerary-builder` | React PWA frontend | `https://pathfinder.isco-pipe.com` |
 | `navigator_services` | Backend API and workflow services | `https://navigator-services.isco-pipe.com` |
 
-The frontend is served as a static build behind nginx, with blue-green deployment managed via Docker Compose on a self-hosted runner. See [Deployment](/navigator/deployment) for the full CI/CD flow.
+The frontend is served as a static build behind nginx. Development frontend deploys run a server-side blue-green deploy script that the deployment repository owns. See [Deployment](/navigator/deployment) for the full CI/CD flow.
 
 ## Architecture at a Glance
 
