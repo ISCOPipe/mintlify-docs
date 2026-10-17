@@ -127,7 +127,7 @@ If no nearby records are found, you can keep the POI. If the check fails, the ap
 
 1. Search the area, then select a result pin. On desktop, rest the pointer briefly on the pin before clicking; the app ignores hurried mouse clicks to avoid opening a card while you pan. Touch, pen, and keyboard activation do not require this pause.
 2. If you see a numbered cluster, select it to zoom toward its individual pins. A cluster count is a count of loaded map results, not a total from the source system.
-3. Review the card before adding a stop. On mobile, the card appears over the page so it is not clipped by the map container. Scroll its content when needed.
+3. Review the card before adding a stop. On mobile, the card appears over the page, above the bottom tab bar, so neither the map container nor the tab bar clips it. Scroll its content when needed. The map legend also floats above the tab bar on mobile.
 4. Use the card's close control, or press **Escape** with a keyboard. When a dialog is open above the map, close that dialog first.
 5. If the wrong record opens or pins overlap, use the result list and its globe control to focus the intended pin. Recheck the name and record type before choosing **Add as Stop**.
 
@@ -148,6 +148,35 @@ In the inspected app, `userSettingsService.ts` synchronizes configuration, theme
 The release note also mentions work-in-progress routes, but `useStops.ts` still auto-saves stops to browser storage. Use **Save Itinerary** and load the saved itinerary when moving a route between devices; do not assume unsaved stops synchronize with preferences.
 
 For the earlier activity changes, see the [August 18, 2026 wiki update](https://dev.azure.com/ISCO-PIPE/af08c6ac-ebae-4d0a-bf50-811762d53dd2/_wiki/wikis/3688edc8-fba5-407c-926f-78e7f119e792?pagePath=%2FIT%20Development%20Documentation%2F_Project-Specific%2FPIP-1373%3A%20Itinerary%20Builder%2FNaviGator%20-%20August%2018th%2C%202026%20Updates). It documents required close-out notes and deferral when no contact is selected, matching the execution flow above. Its future opportunity-stage filters are now covered by [map-result controls](#control-map-results), so do not read that older roadmap as the current feature limit.
+
+## Navigator Games
+
+NaviGator includes four optional, hidden mini-games. They are not part of the planning or execution workflow, and you never need them to build or run a trip. Each game opens as a dialog over the app with a shared header that has **Restart** and **Close** controls.
+
+To open a game, type its trigger phrase while the main app has keyboard focus (not while typing in a search box or form field):
+
+| Game | Trigger | How to play |
+| --- | --- | --- |
+| Front 9 golf | `iscochampionship` | Pick a target and club, set direction and distance, and account for wind and the projected landing across nine holes. |
+| HDPE Stack | `hdpehdpe` | Left/Right arrows move the piece, Up or Z rotates, Space drops, P pauses, and R restarts. On-screen buttons provide touch alternatives. |
+| Ten-pin bowling | `bowlingbowling` | Aim and release the ball, apply spin when available, and follow frames on the scorecard. |
+| Candlepin bowling | `candlepinbowling` | Use the same bowling controls with the candlepin rules and scoring shown in the game. |
+
+### Rules and limits
+
+- **One game at a time.** Typing a second trigger while a game is open or loading does nothing. Close the current game first.
+- **15-minute daily limit.** All four games share one 15-minute budget per day. NaviGator counts only time spent inside the working hours set in **Settings** (daily start and end time). Time outside working hours is not counted. If your working hours are missing or the end time is not after the start time, the games have no limit.
+- **When the limit runs out.** NaviGator shows a notice that the day's game time is used up. You can finish the game in progress, but you cannot restart it or open another game until working hours end. Usage is stored on the current device and browser.
+- **Bowling loads on demand.** The bowling games load their 3D graphics and physics only when you type a bowling trigger, so they do not slow down normal app startup. Expect a short delay the first time.
+
+### Leaderboards
+
+Each game has a shared leaderboard that Navigator Services stores through the `/navigator_gamify` endpoints. When you finish a game while signed in, NaviGator submits your score and shows your best result on the leaderboard. If saving fails, the game tells you and you can still close or restart it.
+
+Front 9 golf has two extra leaderboard rules:
+
+- **All nine holes required.** Only rounds that play every hole are submitted. A partial round shows "Only rounds that play all nine holes go on the leaderboard."
+- **Assisted rounds are excluded.** Golf includes two hidden assists. Type `gopher`, or tap the ball five times quickly, to have a gopher carry your next full swing to the cup. Type `eagle`, or tap any bunker five times quickly, to have an eagle do the same. Using either assist on any hole keeps that round off the leaderboard.
 
 ## Onboarding tour
 
